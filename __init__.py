@@ -8,8 +8,6 @@ from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import QAction, QMenu
 
-# -- only clean stuff below
-
 ADDON_DIR = Path(__file__).parent
 
 def prep_model():
@@ -387,6 +385,7 @@ setup_menu()
 
 
 
+
 import os
 import time
 from threading import Thread
@@ -429,6 +428,12 @@ def watch_model_folder():
          # Use Anki's main thread wrapper to safely execute UI or database operations
          mw.taskman.run_on_main(prep_model)
 
-# Start the folder watcher in a background daemon thread so it closes when Anki exits
-watcher_thread = Thread(target=watch_model_folder, daemon=True)
-watcher_thread.start()
+
+# setup the folder watcher for me and only for me
+
+addon_dir = os.path.dirname(__file__)
+scripts_dir = os.path.join(addon_dir, "scripts")
+
+if os.path.isdir(scripts_dir):
+   watcher_thread = Thread(target=watch_model_folder, daemon=True)
+   watcher_thread.start()

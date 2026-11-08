@@ -131,4 +131,6 @@ Useful when mapping a graphic tablet to a small portion of the screen (I have an
 
 ## disclaimer
 
+This is an opinionated addon. I made it primarily *for myself*. As such, I cannot promise adding requested features. I do want you to have a good baseline experience though.
+
 I can do some light coding, but I'm not a developer. I did talk to a clanker to help me figure out how to implement some stuff.
