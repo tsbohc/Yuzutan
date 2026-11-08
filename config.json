@@ -1,0 +1,23 @@
+{
+   "source_queries": [
+      "deck:Mining -is:new"
+   ],
+   "target_deck": "Yuzutan",
+   "reviews": {
+      "text_kanji_mask": "〇",
+      "stroke_order_gradient": "color",
+      "stroke_line_width": 8.5,
+      "stroke_smoothing_passes": 2,
+      "hint_first_stroke_start": true,
+      "_experimental": false
+   },
+   "source_fields": {
+      "expression": "ExpressionFurigana",
+      "sentence": "SentenceFurigana"
+   },
+   "window": {
+      "width": 1000,
+      "height": 800,
+      "aspect": "16:9"
+   }
+}

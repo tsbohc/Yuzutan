@@ -1,0 +1,22 @@
+<main class="front">
+   <div class="column prompt-column">
+      <div class="frequency">{{Frequency}}</div>
+      <div class="keyword">{{Keyword}}</div>
+      <div id="prompt-word"></div>
+      <div id="prompt-rest"></div>
+   </div>
+   <div class="column canvas-column">
+      <div class="button-container">
+         <button type="button" id="undoBtn">🧹</button>
+         <button type="button" id="hintBtn">💡</button>
+         <button type="button" id="diagramBtn">🧭</button>
+      </div>
+      <div class="canvas-container">
+         <div id="currentComponent"></div>
+         <canvas class="canvas" id="drawCanvas"></canvas>
+         <canvas class="canvas" id="referenceCanvas"></canvas>
+      </div>
+   </div>
+</main>
+
+<div id="context-container" class="section"></div>
