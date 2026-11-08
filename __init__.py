@@ -306,6 +306,7 @@ def on_success(message):
 
 def wrapper():
    prep_model()
+   mw.col.decks.id(TARGET_DECK) # apparently this creates a deck or returns an id if it already exists
    op = QueryOp(parent=mw, op=extract_and_create, success=on_success)
    op.with_progress().run_in_background()
    mw.reset()

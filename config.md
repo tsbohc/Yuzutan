@@ -83,7 +83,7 @@ Queries are ran sequentially, and the created kanji cards are sorted with topoka
 
 ## target_deck
 
-The name of the deck where the kanji cards will be generated. The deck **needs to be created manually**.
+The name of the deck where the kanji cards will be generated. If the deck doesn't exist, it will be created automatically.
 
 ## reviews
 

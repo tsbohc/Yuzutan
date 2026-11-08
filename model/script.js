@@ -1107,7 +1107,7 @@ function circleHell(context) {
    const heightmap = calculateKanjiHeightmap(referenceKanji, structuralData)
 
    // const thresholds = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19] 
-   const thresholds = [1]
+   const thresholds = [2]
    const { ctx } = context;
    
    const gridRows = heightmap.length;
@@ -1118,77 +1118,229 @@ function circleHell(context) {
    const stepX = canvasScale / (gridCols - 1);
    const stepY = canvasScale / (gridRows - 1);
 
-   ctx.save();
-   ctx.lineWidth = 1.2;
-   ctx.strokeStyle = "rgba(142, 142, 147, 0.6)"; // Muted gray topographical ink
+   // ctx.save();
 
-   // Helper function to linearly interpolate a coordinate between two grid nodes
-   function interpolate(v1, v2, t) {
-      return v1 + t * (v2 - v1);
-   }
+   // ctx.lineWidth = 1.2;
+   // ctx.strokeStyle = "rgba(142, 142, 147, 0.6)"; // Muted gray topographical ink
 
-   // 1. Loop through each elevation threshold layer (creates the concentric levels)
-   thresholds.forEach((isoLevel) => {
-      ctx.beginPath();
+   // // Helper function to linearly interpolate a coordinate between two grid nodes
+   // function interpolate(v1, v2, t) {
+   //    return v1 + t * (v2 - v1);
+   // }
 
-      // 2. Scan every individual grid cell in the matrix
-      for (let r = 0; r < gridRows - 1; r++) {
-         for (let c = 0; c < gridCols - 1; c++) {
+   // // 1. Loop through each elevation threshold layer (creates the concentric levels)
+   // thresholds.forEach((isoLevel) => {
+   //    ctx.beginPath();
+
+   //    // 2. Scan every individual grid cell in the matrix
+   //    for (let r = 0; r < gridRows - 1; r++) {
+   //       for (let c = 0; c < gridCols - 1; c++) {
             
-            // Map the coordinates and scalar heights of the 4 corners of the current cell square
-            const x0 = c * stepX,     x1 = (c + 1) * stepX;
-            const y0 = r * stepY,     y1 = (r + 1) * stepY;
+   //          // Map the coordinates and scalar heights of the 4 corners of the current cell square
+   //          const x0 = c * stepX,     x1 = (c + 1) * stepX;
+   //          const y0 = r * stepY,     y1 = (r + 1) * stepY;
 
-            const hTL = heightmap[r][c];       // Top-Left
-            const hTR = heightmap[r][c + 1];   // Top-Right
-            const hBR = heightmap[r + 1][c + 1]; // Bottom-Right
-            const hBL = heightmap[r + 1][c];   // Bottom-Left
+   //          const hTL = heightmap[r][c];       // Top-Left
+   //          const hTR = heightmap[r][c + 1];   // Top-Right
+   //          const hBR = heightmap[r + 1][c + 1]; // Bottom-Right
+   //          const hBL = heightmap[r + 1][c];   // Bottom-Left
 
-            // 3. Check every edge of this square cell to see if the contour line passes through it
-            const points = [];
+   //          // 3. Check every edge of this square cell to see if the contour line passes through it
+   //          const points = [];
 
-            // Top Edge (TL -> TR)
-            if ((hTL >= isoLevel && hTR < isoLevel) || (hTL < isoLevel && hTR >= isoLevel)) {
-               let t = (isoLevel - hTL) / (hTR - hTL);
-               points.push({ x: interpolate(x0, x1, t), y: y0 });
-            }
-            // Right Edge (TR -> BR)
-            if ((hTR >= isoLevel && hBR < isoLevel) || (hTR < isoLevel && hBR >= isoLevel)) {
-               let t = (isoLevel - hTR) / (hBR - hTR);
-               points.push({ x: x1, y: interpolate(y0, y1, t) });
-            }
-            // Bottom Edge (BL -> BR)
-            if ((hBL >= isoLevel && hBR < isoLevel) || (hBL < isoLevel && hBR >= isoLevel)) {
-               let t = (isoLevel - hBL) / (hBR - hBL);
-               points.push({ x: interpolate(x0, x1, t), y: y1 });
-            }
-            // Left Edge (TL -> BL)
-            if ((hTL >= isoLevel && hBL < isoLevel) || (hTL < isoLevel && hBL >= isoLevel)) {
-               let t = (isoLevel - hTL) / (hBL - hTL);
-               points.push({ x: x0, y: interpolate(y0, y1, t) });
-            }
+   //          // Top Edge (TL -> TR)
+   //          if ((hTL >= isoLevel && hTR < isoLevel) || (hTL < isoLevel && hTR >= isoLevel)) {
+   //             let t = (isoLevel - hTL) / (hTR - hTL);
+   //             points.push({ x: interpolate(x0, x1, t), y: y0 });
+   //          }
+   //          // Right Edge (TR -> BR)
+   //          if ((hTR >= isoLevel && hBR < isoLevel) || (hTR < isoLevel && hBR >= isoLevel)) {
+   //             let t = (isoLevel - hTR) / (hBR - hTR);
+   //             points.push({ x: x1, y: interpolate(y0, y1, t) });
+   //          }
+   //          // Bottom Edge (BL -> BR)
+   //          if ((hBL >= isoLevel && hBR < isoLevel) || (hBL < isoLevel && hBR >= isoLevel)) {
+   //             let t = (isoLevel - hBL) / (hBR - hBL);
+   //             points.push({ x: interpolate(x0, x1, t), y: y1 });
+   //          }
+   //          // Left Edge (TL -> BL)
+   //          if ((hTL >= isoLevel && hBL < isoLevel) || (hTL < isoLevel && hBL >= isoLevel)) {
+   //             let t = (isoLevel - hTL) / (hBL - hTL);
+   //             points.push({ x: x0, y: interpolate(y0, y1, t) });
+   //          }
 
-            // 4. If the threshold crosses this cell, connect the interception points
-            if (points.length >= 2) {
-               // Apply your canvas UI scaling function if necessary
-               const pA = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[0]) : points[0];
-               const pB = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[1]) : points[1];
+   //          // 4. If the threshold crosses this cell, connect the interception points
+   //          if (points.length >= 2) {
+   //             // Apply your canvas UI scaling function if necessary
+   //             const pA = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[0]) : points[0];
+   //             const pB = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[1]) : points[1];
                
-               ctx.moveTo(pA.x, pA.y);
-               ctx.lineTo(pB.x, pB.y);
+   //             ctx.moveTo(pA.x, pA.y);
+   //             ctx.lineTo(pB.x, pB.y);
 
-               // Handle rare ambiguous saddle cases (where 4 intersections occur in one cell)
-               if (points.length === 4) {
-                  const pC = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[2]) : points[2];
-                  const pD = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[3]) : points[3];
-                  ctx.moveTo(pC.x, pC.y);
-                  ctx.lineTo(pD.x, pD.y);
-               }
+   //             // Handle rare ambiguous saddle cases (where 4 intersections occur in one cell)
+   //             if (points.length === 4) {
+   //                const pC = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[2]) : points[2];
+   //                const pD = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[3]) : points[3];
+   //                ctx.moveTo(pC.x, pC.y);
+   //                ctx.lineTo(pD.x, pD.y);
+   //             }
+   //          }
+   //       }
+   //    }
+   //    ctx.stroke();
+   // });
+
+   // ctx.restore();
+
+   ctx.save();
+
+// --- Simplified Configuration Parameters ---
+const maxRadius = 6;                  // Single knob controlling grid spacing
+const gridSpacing = maxRadius * 2;    // Center-to-center distance (Diameter)
+const capRadius = gridSpacing * 0.42; // 90% of the maximum allowed radius (prevents touching)
+const minAllowedRadius = 2;         // Prevents rendering sub-pixel artifacts
+
+ctx.fillStyle = "#FFFFFF"; 
+ctx.strokeStyle = "rgba(142, 142, 147, 0.7)";
+ctx.lineWidth = 0.8;
+
+// Helper: Bilinear interpolation to sample height values
+function sampleHeightmap(x, y) {
+   const c = x / stepX;
+   const r = y / stepY;
+   
+   const c0 = Math.max(0, Math.min(gridCols - 2, Math.floor(c)));
+   const c1 = c0 + 1;
+   const r0 = Math.max(0, Math.min(gridRows - 2, Math.floor(r)));
+   const r1 = r0 + 1;
+   
+   const tx = c - c0;
+   const ty = r - r0;
+   
+   const h00 = heightmap[r0][c0];
+   const h10 = heightmap[r0][c1];
+   const h01 = heightmap[r1][c0];
+   const h11 = heightmap[r1][c1];
+   
+   const top = h00 + tx * (h10 - h00);
+   const bottom = h01 + tx * (h11 - h01);
+   return top + ty * (bottom - top);
+}
+
+// Helper: Find shortest distance from a point to a line segment
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+   const dx = x2 - x1;
+   const dy = y2 - y1;
+   if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+   
+   let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+   t = Math.max(0, Math.min(1, t)); 
+   
+   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function interpolate(v1, v2, t) {
+   return v1 + t * (v2 - v1);
+}
+
+thresholds.forEach((isoLevel) => {
+   const segments = [];
+
+   // 1. Extract explicit line segments using Marching Squares (Stored in base unscaled space)
+   for (let r = 0; r < gridRows - 1; r++) {
+      for (let c = 0; c < gridCols - 1; c++) {
+         const x0 = c * stepX,     x1 = (c + 1) * stepX;
+         const y0 = r * stepY,     y1 = (r + 1) * stepY;
+
+         const hTL = heightmap[r][c];
+         const hTR = heightmap[r][c + 1];
+         const hBR = heightmap[r + 1][c + 1];
+         const hBL = heightmap[r + 1][c];
+
+         const points = [];
+
+         if ((hTL >= isoLevel && hTR < isoLevel) || (hTL < isoLevel && hTR >= isoLevel)) {
+            points.push({ x: interpolate(x0, x1, (isoLevel - hTL) / (hTR - hTL)), y: y0 });
+         }
+         if ((hTR >= isoLevel && hBR < isoLevel) || (hTR < isoLevel && hBR >= isoLevel)) {
+            points.push({ x: x1, y: interpolate(y0, y1, (isoLevel - hTR) / (hBR - hTR)) });
+         }
+         if ((hBL >= isoLevel && hBR < isoLevel) || (hBL < isoLevel && hBR >= isoLevel)) {
+            points.push({ x: interpolate(x0, x1, (isoLevel - hBL) / (hBR - hBL)), y: y1 });
+         }
+         if ((hTL >= isoLevel && hBL < isoLevel) || (hTL < isoLevel && hBL >= isoLevel)) {
+            points.push({ x: x0, y: interpolate(y0, y1, (isoLevel - hTL) / (hBL - hTL)) });
+         }
+
+         if (points.length >= 2) {
+            segments.push({ p1: points[0], p2: points[1] });
+            if (points.length === 4) {
+               segments.push({ p1: points[2], p2: points[3] });
             }
          }
       }
-      ctx.stroke();
-   });
+   }
+
+   // 2. Generate triangular circle grid starting strictly at 0,0
+   const rowHeight = gridSpacing * Math.sqrt(3) / 2;
+   
+   for (let y = 0; y <= canvasScale; y += rowHeight) {
+      // Calculate row index to stagger every odd row
+      const rowIndex = Math.round(y / rowHeight);
+      const isOddRow = rowIndex % 2 !== 0;
+      
+      // Stagger odd rows by half the spacing, keeping row 0 starting exactly at x=0
+      const startX = isOddRow ? gridSpacing / 2 : 0;
+
+      for (let x = startX; x <= canvasScale; x += gridSpacing) {
+         
+         // Only draw inside the safe field bounding box boundaries
+         if (x < 0 || x > canvasScale || y < 0 || y > canvasScale) continue;
+
+         const localHeight = sampleHeightmap(x, y);
+         if (localHeight >= isoLevel) continue;
+
+         // 3. Proximity check done entirely in the SAME base map coordinate space
+         let minDistance = Infinity;
+         segments.forEach(seg => {
+            const dist = pointToSegmentDistance(x, y, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y);
+            if (dist < minDistance) {
+               minDistance = dist;
+            }
+         });
+
+         // Max target size starts at our 90% cap limit
+         let targetRadius = capRadius;
+
+         // Shrink if it gets too close to the isoline boundary
+         const spacingBuffer = gridSpacing * 0.05; // 10% total padding (5% on each side of the gap)
+         if (minDistance < targetRadius + spacingBuffer) {
+            targetRadius = minDistance - spacingBuffer;
+         }
+
+         // 4. Transform positions and radii to UI canvas scale space at the exact moment of drawing
+         if (targetRadius >= minAllowedRadius) {
+            let renderPos = { x, y };
+            let edgePos = { x: x + targetRadius, y }; // Use a sample point to calculate scaled radius factor
+
+            if (typeof scaleReferencePoint === 'function') {
+               renderPos = scaleReferencePoint(context, renderPos);
+               edgePos = scaleReferencePoint(context, edgePos);
+            }
+
+            // Calculate the actual scaled radius dynamically based on the current context scale matrix
+            const scaledRadius = Math.abs(edgePos.x - renderPos.x);
+
+            ctx.beginPath();
+            ctx.arc(renderPos.x, renderPos.y, scaledRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+         }
+      }
+   }
+});
+
 
    ctx.restore();
 
@@ -1218,10 +1370,10 @@ function circleHell(context) {
 
       ctx.save();
       
-      if (t === 'joint') {
-         ctx.fillStyle = '#8e8e93'; //'#ff3b30';
+      if (t === 'joint') { // '#8e8e93'
+         ctx.fillStyle = '#007aff'; //'#ff3b30';
       } else if (t === 'angle') {
-         ctx.fillStyle = '#8e8e93'; //'#007aff';
+         ctx.fillStyle = '#007aff'; //'#007aff';
       } else if (t === 'floater') {
          ctx.fillStyle = 'transparent';
       }
