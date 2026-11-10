@@ -502,8 +502,10 @@ function initReferenceCanvas(id) {
 
    function clear() {
       ctx.clearRect(0, 0, rect.width, rect.height);
-      drawCanvasElement = document.getElementById('drawCanvas');
-      if (drawCanvasElement) drawCanvasElement.classList.remove("dimmedCanvas");
+      // drawCanvasElement = document.getElementById('drawCanvas');
+      // if (drawCanvasElement) drawCanvasElement.classList.remove("dimmedCanvas");
+      const canvasContainer = document.getElementById('referenceCanvasContainer');
+      if (canvasContainer) canvasContainer.style.backdropFilter = 'blur(0px)';
    }
 
    function render() {
@@ -511,8 +513,11 @@ function initReferenceCanvas(id) {
       
       if (doShowDiagram || isSticky) {
 
-         drawCanvasElement = document.getElementById('drawCanvas');
-         if (drawCanvasElement) drawCanvasElement.classList.add("dimmedCanvas");
+         // drawCanvasElement = document.getElementById('drawCanvas');
+         // if (drawCanvasElement) drawCanvasElement.classList.add("dimmedCanvas");
+         const canvasContainer = document.getElementById('referenceCanvasContainer');
+         // if (canvasContainer) canvasContainer.classList.add('dimmingCanvas');
+         if (canvasContainer) canvasContainer.style.backdropFilter = 'blur(4px)';
          
          referenceKanji.forEach((stroke, idx) => { 
             ctx.strokeStyle = canvasUtils.getColor(idx);
@@ -548,8 +553,8 @@ function initReferenceCanvas(id) {
    }
 
    EVENT.on('ref:sticky', () => {
+      doShowDiagram = isSticky ? false : !doShowDiagram;
       isSticky = !isSticky;
-      doShowDiagram = !doShowDiagram;
       render();
       window.__hasShownDiagram = true;
    });

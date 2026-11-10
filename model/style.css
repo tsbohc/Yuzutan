@@ -1,27 +1,29 @@
 
 /* witches' catpuccin light */
 :root {
-   --canvas-1: rgb(249, 250, 251);
-   --canvas-2: rgb(239, 241, 245);
-   --canvas-s: rgba(255, 255, 255, 0.9);
+   --canvas-1: rgb(249, 250, 251, 0.5);
+   --canvas-2: rgb(230, 231, 232, 0.5);
+   --canvas-s: rgba(255, 255, 255, 0.5);
    --canvas-border: rgb(154, 156, 160, 0.4);
+   --dim-background: rgb(230, 233, 239);
    --sgap: 8px;
 }
 
-
 :root {
-   --canvas-1: rgb(250, 251, 252);
-   --canvas-2: rgb(240, 241, 242);
-   --canvas-s: rgba(255, 255, 255, 0.9);
+   --canvas-1: rgb(250, 251, 252, 0.5);
+   --canvas-2: rgb(240, 241, 242, 0.5);
+   --canvas-s: rgba(255, 255, 255, 0.5);
    --canvas-border: rgb(154, 156, 156, 0.4);
+   --dim-background: rgb(154, 156, 160, 0.1);
    --sgap: 8px;
 }
 
 .nightMode {
-   --canvas-1: rgb(60, 60, 60);
-   --canvas-2: rgb(52, 52, 52);
-   --canvas-s: rgba(60, 60, 60, 0.9);
-   --canvas-border: rgb(150, 150, 150, 0.3);
+   --canvas-1: rgb(160, 160, 160, 0.1);
+   --canvas-2: rgb(120, 120, 120, 0.1);
+   --canvas-s: rgba(160, 160, 160, 0.1);
+   --canvas-border: rgb(100, 100, 100, 0.3);
+   --dim-background: rgb(154, 156, 160, 0.1);
 }
 
 * {
@@ -39,7 +41,7 @@ main {
 main .column {
    flex: 1;
    min-width: 0;
-   background: rgb(154, 156, 160, 0.1);
+   background: var(--dim-background);
    border-radius: 0.6rem;
 }
 
@@ -127,7 +129,11 @@ main .column:last-child {
          var(--canvas-2) 0 75%,
          var(--canvas-1) 0);
    background-size: 100% 100%, 100% 100%, 66.6666% 66.6666%;
-   box-shadow: 0 0 1rem rgba(0, 0, 0, 0.05);
+   box-shadow: 0 0 1.2rem rgba(0, 0, 0, 0.05);
+}
+
+.canvas-container::before {
+   
 }
 
 .canvas {
@@ -136,63 +142,65 @@ main .column:last-child {
    height: 100%;
    z-index: 2;
    transition: all 0.15s ease;
-   opacity: 0.3;
    cursor: crosshair;
+   opacity: 0.6;
 }
 
-.front .canvas {
-   opacity: 0.8;
+
+
+
+/* both */
+
+.canvas-column {
+   position: relative;
+}
+
+.canvas-container:has(#referenceCanvas) {
+   pointer-events: none;
+   z-index: 5;
+   position: absolute;
+   transition: all 0.9s ease, backdrop-filter 0.3s ease;
+   right: 0px;
+   backdrop-filter: blur(0px);
 }
 
 #referenceCanvas {
    pointer-events: none;
-   opacity: 0.5;
-   z-index: 3;
-}
-
-.dimmedCanvas {
-   filter: blur(6px) !important;
-   opacity: 0.4 !important; 
-}
-
-.back #resultCanvas {
-   filter: blur(6px);
-   opacity: 0.3;
    z-index: 5;
+   opacity: 0.6;
 }
 
-.back .canvas-container:has(#referenceCanvas) {
-   /* opacity: 0.5; */
+.dimmingCanvas {
+   backdrop-filter: blur(5px);
 }
 
-.back #referenceCanvas {
-   opacity: 0.5;
-   pointer-events: none;
-   transition: all 0.2s ease;
+/* front */
+
+#drawCanvas {
+   opacity: 0.7;
 }
 
-.back .canvas-column {
-   position: relative;
+.front .canvas-container:has(#referenceCanvas) {
+   background: none;
 }
+
+/* back */
 
 .back .canvas-container:has(#resultCanvas) {
    transform: translateX(6px);
 }
 
 .back .canvas-container:has(#referenceCanvas) {
-   position: absolute;
-   transition: all 1.0s ease;
-   right: 0px;
+   backdrop-filter: blur(5px);
 }
 
 .back .canvas-column:hover .canvas-container:has(#referenceCanvas) {
    transform: translate(-96%, 0);
 }
 
-.back .canvas-column:hover #resultCanvas {
-   opacity: 0.5;
-   filter: blur(0px);   
-}
+
+
+
 
 
 
