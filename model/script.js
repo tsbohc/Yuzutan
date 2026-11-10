@@ -302,7 +302,7 @@ const canvasUtils = {
          return !ENV.isDarkMode ? `oklch(${lightness} 0.0 250)` : `oklch(${1-lightness} 0.0 250)`;
       } else {
          const hue = ((idx / referenceKanji.length) + 0.08) * 320;
-         return !ENV.isDarkMode ? `oklch(0.69 0.20 ${hue})` : `oklch(0.8 0.27 ${hue})`;
+         return !ENV.isDarkMode ? `oklch(0.69 0.20 ${hue})` : `oklch(0.85 0.25 ${hue})`;
       }
    },
 
@@ -690,7 +690,6 @@ const EVENT = {
 
 // init
 
-window.YuzutanStrokes = window.YuzutanStrokes || [];
 
 const referenceKanji = (new Function(`return (${`{{ReferenceData}}`})`))();
 const structuralData = (new Function(`return (${`{{StructuralData}}`})`))();
@@ -705,6 +704,12 @@ const ENV = {
 }
 
 ENV.strokeColor = ENV.isDarkMode ? "oklch(0.9 0 none)" : "oklch(0.15 0 none)";
+
+if (ENV.isFront) {
+   window.YuzutanStrokes = [];
+} else {
+   window.YuzutanStrokes = window.YuzutanStrokes || [];
+}
 
 initReferenceCanvas('referenceCanvas');
 initDrawingCanvas('drawCanvas');
