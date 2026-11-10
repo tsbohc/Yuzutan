@@ -18,7 +18,7 @@ At this stage, the addon is not stable. Things might be introduced, changed, or 
 
 ## 🔧 extra setup required!
 
-The addon requires `ExpressionFurigana` or similar field to have **split furigana**, such as `会[かい] 社[しゃ]`✔️. This won't work: `会社[かいしゃ]`❌.
+The addon requires `ExpressionFurigana` or a similar field to have **split furigana**, such as `会[かい] 社[しゃ]`✔️. This won't work: `会社[かいしゃ]`❌.
 
 Here's a short guide:
 
@@ -63,7 +63,7 @@ Default values work for Lapis, Kiku, and other note types that use the same conv
 - **expression** - word with **with furigana**
 - **sentence** - context sentence **with furigana**
 
-The **expression** field requires furigana to be split.
+The **expression** field requires furigana to be split. Ideally, sentence furigana should be plain (brackets, no html tags).
 
 ## source_queries
 
@@ -133,4 +133,4 @@ Useful when mapping a graphic tablet to a small portion of the screen (I have an
 
 This is an opinionated addon. I made it primarily *for myself*. As such, I cannot promise adding requested features. I do want you to have a good baseline experience though.
 
-I can do some light coding, but I'm not a developer. I did talk to a clanker to help me figure out how to implement some stuff.
+Also, I can do some light coding, but I'm not a developer. I did talk to a clanker to help me figure out how to implement some stuff.

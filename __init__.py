@@ -1,3 +1,4 @@
+import html
 import json
 import os
 import re
@@ -131,6 +132,26 @@ def fetch_batch_kanji(needed_kanji_iterable) -> dict:
    return result_data
 
 
+def clean_up_sentence(text):
+   # unescape everything, keep only ruby and rt if we're getting html furigana
+   
+   while True:
+      next_text = html.unescape(text)
+      if next_text == text:
+         break
+      text = next_text
+   
+   tag_pattern = re.compile(r'</?([a-zA-Z1-9]+)\b[^>]*>')
+   
+   def replacer(match):
+      tag_name = match.group(1).lower()
+      if tag_name in ('ruby', 'rt', 'b', 'strong'):
+         return match.group(0)
+      return ''
+   
+   return tag_pattern.sub(replacer, text)
+
+
 def get_new_kanji():
    ret = {}
  
@@ -144,7 +165,7 @@ def get_new_kanji():
          note = mw.col.get_note(nid)
    
          expression_furigana = note[expression_field_name].strip()
-         sentence_furigana = note[sentences_field_name].strip()
+         sentence_furigana = clean_up_sentence(note[sentences_field_name].strip())
 
          for k in KANJI_REGEX.findall(expression_furigana):
             if k not in ret:
@@ -433,7 +454,7 @@ def watch_model_folder():
 # setup the folder watcher for me and only for me
 
 addon_dir = os.path.dirname(__file__)
-scripts_dir = os.path.join(addon_dir, "scripts")
+scripts_dir = os.path.join(addon_dir, "_scripts")
 
 if os.path.isdir(scripts_dir):
    watcher_thread = Thread(target=watch_model_folder, daemon=True)

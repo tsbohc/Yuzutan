@@ -1,9 +1,27 @@
+
+/* witches' catpuccin light */
 :root {
    --canvas-1: rgb(249, 250, 251);
    --canvas-2: rgb(239, 241, 245);
-   --canvas-d: rgba(0, 0, 0, 0.08);
    --canvas-s: rgba(255, 255, 255, 0.9);
+   --canvas-border: rgb(154, 156, 160, 0.4);
    --sgap: 8px;
+}
+
+
+:root {
+   --canvas-1: rgb(250, 251, 252);
+   --canvas-2: rgb(240, 241, 242);
+   --canvas-s: rgba(255, 255, 255, 0.9);
+   --canvas-border: rgb(154, 156, 156, 0.4);
+   --sgap: 8px;
+}
+
+.nightMode {
+   --canvas-1: rgb(60, 60, 60);
+   --canvas-2: rgb(52, 52, 52);
+   --canvas-s: rgba(60, 60, 60, 0.9);
+   --canvas-border: rgb(150, 150, 150, 0.3);
 }
 
 * {
@@ -21,7 +39,7 @@ main {
 main .column {
    flex: 1;
    min-width: 0;
-   background: rgb(204, 208, 218, 0.25);
+   background: rgb(154, 156, 160, 0.1);
    border-radius: 0.6rem;
 }
 
@@ -89,7 +107,7 @@ main .column:last-child {
    position: relative;
    width: 250px;
    aspect-ratio: 1;
-   border: 1px solid rgb(172, 176, 190, 0.7);
+   border: 1px solid var(--canvas-border);
    border-radius: 0.6rem;
    /* overflow: hidden; */
    background:
@@ -140,9 +158,15 @@ main .column:last-child {
 .back #resultCanvas {
    filter: blur(6px);
    opacity: 0.3;
+   z-index: 5;
 }
 
-.back #referenceCanvas {   opacity: 0.5;
+.back .canvas-container:has(#referenceCanvas) {
+   /* opacity: 0.5; */
+}
+
+.back #referenceCanvas {
+   opacity: 0.5;
    pointer-events: none;
    transition: all 0.2s ease;
 }

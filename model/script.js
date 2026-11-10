@@ -1,477 +1,31 @@
-// validation
+const pointMath = {
 
-function scaleReferencePoint(context, point) {
-   const { rect } = context;
-   const scale = rect.width / 109
-   return { x: point.x * scale, y: point.y * scale }
-}
+   getDistance (p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+   },
 
-function scaleInputPoint(context, point) {
-   const { rect } = context;
-   const scale = 109 / rect.width 
-   return { x: point.x * scale, y: point.y * scale }
-}
-
-function getDistance(p1, p2) {
-   return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-}
-
-function resampleStroke(stroke, targetCount) {
-   if (stroke.length < 2 || targetCount < 2) return stroke;
-
-   // Step A: Calculate total length and segments
-   let totalLength = 0;
-   const segments = [];
-   for (let i = 0; i < stroke.length - 1; i++) {
-      const dist = getDistance(stroke[i], stroke[i + 1]);
-      totalLength += dist;
-      segments.push({ start: stroke[i], end: stroke[i + 1], length: dist, cumulative: totalLength });
-   }
-
-   // Handle edge case where user clicks down and doesn't move
-   if (totalLength === 0) {
-      return Array(targetCount).fill(null).map(() => ({ x: stroke[0].x, y: stroke[0].y }));
-   }
-
-   // Step B: Crawl along the path collecting evenly spaced points
-   const interval = totalLength / (targetCount - 1);
-   const resampledPoints = [stroke[0]]; // Always include exact start point
-
-   let currentSegmentIdx = 0;
-
-   for (let i = 1; i < targetCount - 1; i++) {
-      const targetDistance = i * interval;
-
-      // Find which segment holds this distance target
-      while (currentSegmentIdx < segments.length && segments[currentSegmentIdx].cumulative < targetDistance) {
-         currentSegmentIdx++;
+   scalePoint (p0, mode) {
+      if (mode == 'input') {
+         return { x: p0.x / ENV.scale, y: p0.y / ENV.scale }
+      } else {
+         return { x: p0.x * ENV.scale, y: p0.y * ENV.scale }
       }
+   },
 
-      // Interpolate cleanly between that specific segment
-      const seg = segments[Math.min(currentSegmentIdx, segments.length - 1)];
-      const prevCumulative = currentSegmentIdx === 0 ? 0 : segments[currentSegmentIdx - 1].cumulative;
-      const segmentProgress = (targetDistance - prevCumulative) / (seg.length || 1);
+   scaleStroke (s0, mode) {
+      return s0.map(point => pointMath.scalePoint(point, mode));
+   },
 
-      resampledPoints.push({
-         x: seg.start.x + (seg.end.x - seg.start.x) * segmentProgress,
-         y: seg.start.y + (seg.end.y - seg.start.y) * segmentProgress
-      });
-   }
+   decimateStroke(s0) {
+      const len = s0.length;
+      if (len < 2) return s0;
 
-   resampledPoints.push(stroke[stroke.length - 1]); // Always include exact end point
-   return resampledPoints;
-}
-
-function gradeStrokeDirection(input, target) {
-   // returns %, 100 is same direction, 50 perpendicular, 0 opposite
-
-   const uStart = input[0];
-   const uEnd = input[target.length - 1];
-
-   const rStart = target[0];
-   const rEnd = target[target.length - 1];
-
-   const uVector = { x: uEnd.x - uStart.x, y: uEnd.y - uStart.y };
-   const rVector = { x: rEnd.x - rStart.x, y: rEnd.y - rStart.y };
-
-   const uLen = Math.sqrt(uVector.x * uVector.x + uVector.y * uVector.y) || 1;
-   const rLen = Math.sqrt(rVector.x * rVector.x + rVector.y * rVector.y) || 1;
-
-   const dotProduct = (uVector.x * rVector.x + uVector.y * rVector.y) / (uLen * rLen);
-   return ((dotProduct + 1) / 2) * 100;
-}
-
-function gradeStrokeLength(input, target) {
-   // returns %, deviation by maxDeviationFactor results in 0
-   const maxDeviationFactor = 6; 
-
-   let inputLength = 0;
-   for (let k = 0; k < input.length - 1; k++) {
-      inputLength += getDistance(input[k], input[k + 1]);
-   }
-
-   let targetLength = 0;
-   for (let k = 0; k < target.length - 1; k++) {
-      targetLength += getDistance(target[k], target[k + 1]);
-   }
-
-   const maxLen = Math.max(inputLength, targetLength);
-   const minLen = Math.min(inputLength, targetLength);
-   const ratio = maxLen / minLen;
-   const alignment = 1 - (ratio - 1) / (maxDeviationFactor - 1);
-
-   return Math.max(0, alignment) * 100;
-}
-
-function gradeStrokeShape(input, target) {
-   if (input.length === 0 || target.length === 0) return 0;
-
-   const wobbleForgiveness = 0.10; // 5% of the bounding box size
-   const maxDistanceThreshold = 0.70; // 15% deviation maximum before 0% score
-
-   // Helper to extract bounding box dimensions
-   const getBounds = (stroke) => {
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      for (let i = 0; i < stroke.length; i++) {
-         const p = stroke[i];
-         if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-         if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-      }
-      const width = maxX - minX || 1; // Avoid division by zero
-      const height = maxY - minY || 1;
-      return { minX, minY, width, height, maxDim: Math.max(width, height) };
-   };
-
-   const tBounds = getBounds(target);
-   const uBounds = getBounds(input);
-
-   // 1. Normalize the Target stroke into a 0 to 1 bounding square space
-   const normalizedTarget = target.map(p => ({
-      x: (p.x - tBounds.minX) / tBounds.maxDim,
-      y: (p.y - tBounds.minY) / tBounds.maxDim
-   }));
-
-   let totalShapeScore = 0;
-   
-   for (let j = 0; j < input.length; j++) {
-      const uPt = {
-         x: (input[j].x - uBounds.minX) / uBounds.maxDim,
-         y: (input[j].y - uBounds.minY) / uBounds.maxDim
-      };
-
-      let minDistanceToPath = Infinity;
-      for (let k = 0; k < normalizedTarget.length; k++) {
-         const tPt = normalizedTarget[k];
-         const dx = uPt.x - tPt.x;
-         const dy = uPt.y - tPt.y;
-         
-         const dist = Math.sqrt(dx * dx + dy * dy);
-         if (dist < minDistanceToPath) {
-            minDistanceToPath = dist;
-         }
-      }
-
-      const penalizedDistance = Math.max(0, minDistanceToPath - wobbleForgiveness);
-      const pointScore = Math.max(0, 1 - (penalizedDistance / maxDistanceThreshold));
-      totalShapeScore += pointScore;
-   }
-
-   return (totalShapeScore / input.length) * 100;
-}
-
-function gradeStroke(context, idx) {
-   if (idx >= referenceKanji.length) {
-      const directionScore = 0;
-      const lengthScore = 0;
-      const shapeScore = 0;
-      return { directionScore, lengthScore, shapeScore };
-   }
-
-   const referenceStroke = referenceKanji[idx];
-
-   const stroke = window.AnkiStrokes[idx];
-   const scaledStroke = stroke.map(point => scaleInputPoint(context, point));;
-   const resampledStroke = resampleStroke(scaledStroke, referenceStroke.length);
-
-   const directionScore = gradeStrokeDirection(resampledStroke, referenceStroke);
-   const lengthScore = gradeStrokeLength(resampledStroke, referenceStroke);
-   const shapeScore = gradeStrokeShape(resampledStroke, referenceStroke);
-
-   // console.log(directionScore, lengthScore, shapeScore);
-
-   return { directionScore, lengthScore, shapeScore };
-}
-
-
-
-
-
-
-function getGradedColour(inn, idx) {
-   const { directionScore, lengthScore, shapeScore } = inn;
-   // const avgScore = (directionScore + lengthScore + shapeScore) / 3;
-   
-   const avgScore = Math.min(directionScore, lengthScore, shapeScore);
-   const color = getColour(idx);
-
-   let badColour
-   if (CONFIG.stroke_order_gradient == 'mono') {
-      badColour = "oklch(62.8% 0.2577 29.23)";
-   } else {
-      badColour = "oklch(0.2 0 none)";
-   }
-
-   let strokeStyle = color;
-   if (avgScore < 80) {
-      const reductionPercent = Math.min((100 - avgScore) * 1.5, 100);
-      strokeStyle = `color-mix(in oklch, ${color}, ${badColour} ${reductionPercent}%)`;
-      // strokeStyle = `color-mix(in oklch, ${color}, oklch(0.69 0.20 25) ${reductionPercent}%)`;
-   }
-
-   return strokeStyle;
-}
-
-
-
-
-// setup
-
-const referenceKanji = (new Function(`return (${`{{ReferenceData}}`})`))();
-const structuralData = (new Function(`return (${`{{StructuralData}}`})`))();
-const componentBreakdown = (new Function(`return (${`{{Breakdown}}`})`))();
-const isFrontSide = document.querySelector("main").classList.contains("front")
-
-function initContext(id) {
-   let canvas = document.getElementById(id);
-   if (!canvas) return;
-   
-   const dpr = window.devicePixelRatio || 1;
-   const rect = canvas.getBoundingClientRect();
-   
-   canvas.width = rect.width * dpr;
-   canvas.height = rect.height * dpr;
-   
-   const ctx = canvas.getContext('2d');
-   ctx.scale(dpr, dpr);
-   ctx.clearRect(0, 0, rect.width, rect.height);
-
-   ctx.lineCap = "round";
-   ctx.lineJoin = "round";  
-   
-   return { canvas, ctx, rect };
-}
-
-
-// stroke rendering
-
-function getColour(idx) {
-   if (CONFIG.stroke_order_gradient == 'mono') {
-      const progress = idx / (referenceKanji.length - 1);
-      const lightness = 0.85 - (progress * 0.70); 
-      return `oklch(${lightness} 0.0 250)`; 
-   } else {
-      const hue = ((idx / referenceKanji.length) + 0.08) * 320;
-      return `oklch(0.69 0.20 ${hue})`;
-   }
-}
-
-
-function renderStroke(context, stroke) {
-   if (stroke.length < 2) return;
-   const { ctx } = context;
-
-   ctx.beginPath();
-   ctx.moveTo(stroke[0].x, stroke[0].y);
-   for (let i = 1; i < stroke.length; i++) {
-      ctx.lineTo(stroke[i].x, stroke[i].y);
-   }
-
-   ctx.stroke(); 
-}
-
-
-function renderStroke(context, stroke) {
-   if (stroke.length < 2) return;
-   const { ctx } = context;
-
-   // Configure your desired stroke limits
-   const MAX_WIDTH = ctx.lineWidth; 
-   const MIN_WIDTH = MAX_WIDTH * 0.8;
-   
-   // Tapering distances in pixels (adjust these to make tapers longer or shorter)
-   const START_TAPER_PX = CONFIG.stroke_line_width * 1; 
-   const END_TAPER_PX = CONFIG.stroke_line_width * 2;
-
-   const widths = new Array(stroke.length);
-   
-   // Pre-pass 1: Calculate cumulative pixel distance along the stroke path
-   const distances = new Array(stroke.length);
-   distances[0] = 0;
-   for (let i = 1; i < stroke.length; i++) {
-      const dist = Math.hypot(stroke[i].x - stroke[i-1].x, stroke[i].y - stroke[i-1].y);
-      distances[i] = distances[i - 1] + dist;
-   }
-   const totalLength = distances[stroke.length - 1];
-
-   // Pre-pass 2: Apply the identical geometric taper profile based purely on distance
-   for (let i = 0; i < stroke.length; i++) {
-      let targetWidth = MAX_WIDTH;
-
-      const dFromStart = distances[i];
-      const dFromEnd = totalLength - distances[i];
-
-      if (dFromStart < START_TAPER_PX && totalLength > START_TAPER_PX) {
-         // Smoothly scale up from MIN_WIDTH at the absolute beginning
-         const factor = dFromStart / START_TAPER_PX;
-         targetWidth = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * factor;
-         
-      } else if (dFromEnd < END_TAPER_PX && totalLength > END_TAPER_PX) {
-         // Smoothly scale down to MIN_WIDTH at the absolute end
-         const factor = dFromEnd / END_TAPER_PX;
-         targetWidth = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * factor;
-      }
-
-      widths[i] = targetWidth;
-   }
-
-   // Render the path smoothly using midpoints to prevent ugly overlapping joint blobs
-   if (stroke.length === 2) {
-      ctx.beginPath();
-      ctx.lineWidth = widths[0];
-      ctx.moveTo(stroke[0].x, stroke[0].y);
-      ctx.lineTo(stroke[1].x, stroke[1].y);
-      ctx.stroke();
-      ctx.restore();
-      return;
-   }
-
-   for (let i = 1; i < stroke.length - 1; i++) {
-      const p0 = stroke[i - 1];
-      const p1 = stroke[i];
-      const p2 = stroke[i + 1];
-
-      const mid1X = (p0.x + p1.x) / 2;
-      const mid1Y = (p0.y + p1.y) / 2;
-      const mid2X = (p1.x + p2.x) / 2;
-      const mid2Y = (p1.y + p2.y) / 2;
-
-      ctx.beginPath();
-      ctx.lineWidth = widths[i];
-      ctx.moveTo(mid1X, mid1Y);
-      ctx.quadraticCurveTo(p1.x, p1.y, mid2X, mid2Y);
-      ctx.stroke();
-   }
-
-   // Connect cleanly to the final point
-   const lastIdx = stroke.length - 1;
-   const secondToLast = stroke[lastIdx - 1];
-   const last = stroke[lastIdx];
-   const finalMidX = (secondToLast.x + last.x) / 2;
-   const finalMidY = (secondToLast.y + last.y) / 2;
-
-   ctx.beginPath();
-   ctx.lineWidth = widths[lastIdx];
-   ctx.moveTo(finalMidX, finalMidY);
-   ctx.lineTo(last.x, last.y);
-   ctx.stroke();
-}
-
-
-
-function renderColourStroke(context, stroke) {
-   const { ctx } = context
-   if (stroke.length < 2) return;
-
-   const originalWidth = ctx.lineWidth;
-   const originalColor = ctx.strokeStyle;
-
-   ctx.save();
-
-   // glow
-   // ctx.lineWidth = originalWidth;
-   // const offset = 9999;
-   // ctx.shadowBlur = 12;
-   // ctx.shadowOffsetX = 0;
-   // ctx.shadowOffsetY = offset;
-   // ctx.shadowColor = `color-mix(in srgb, ${originalColor} 15%, transparent)`; 
-   // ctx.translate(0, -offset); 
-   // renderStroke(context, stroke);
-   // ctx.translate(0, offset);
-   // ctx.shadowColor = "transparent"; 
-   // ctx.shadowOffsetY = 0;
-
-   // outline
-   const outlineThickness = 1;
-   ctx.lineWidth = originalWidth + (outlineThickness * 2);
-   ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-   renderStroke(context, stroke);
-
-   // line itself
-   ctx.lineWidth = originalWidth;
-   ctx.strokeStyle = originalColor;
-   renderStroke(context, stroke);
-
-   ctx.restore();
-}
-
-
-function drawDotHint(context, stroke) {
-   const { ctx } = context;
-   let p0 = stroke[0];
-   
-   const radius = CONFIG.stroke_line_width * 0.5;
-   const outlineThickness = 1; 
-   const coreColor = ctx.strokeStyle;
-
-   ctx.save(); 
-
-   ctx.beginPath();
-   ctx.arc(p0.x, p0.y, radius + outlineThickness, 0, Math.PI * 2);
-   ctx.fillStyle = "#ffffff";
-   ctx.fill();
-
-   ctx.beginPath();
-   ctx.arc(p0.x, p0.y, radius, 0, Math.PI * 2);
-   ctx.fillStyle = coreColor; 
-   ctx.fill(); 
-
-   ctx.restore();  
-}   
-
-
-// canvas specific
-
-if (isFrontSide) {
-   const strokeChangeListeners = [];
-
-   window.AnkiStrokes = new Proxy([], {
-      set(target, property, value, receiver) {
-         const success = Reflect.set(target, property, value, receiver);
-         if (property === 'length') {
-            strokeChangeListeners.forEach(callback => callback(target.length));
-         }
-         return success;
-      }
-   });
-
-   globalThis._onStrokesChange = function(callback) {
-      strokeChangeListeners.push(callback);
-      callback(window.AnkiStrokes.length);
-   }
-}
-
-
-// input canvas specific
-
-
-function initDrawingCanvas(id) {
-   const context = initContext(id);
-   if (!context) return;
-
-   const { canvas, ctx, rect } = context;
-   const strokeColor = "oklch(0.2 0 none)";
-   // const strokeColor = getRandomColour();
-   // const strokeColor = "oklch(69% 0.10 273.13deg)";
-   ctx.lineWidth = CONFIG.stroke_line_width;
- 
-   let isDrawing = false;
-   let currentStroke = [];
-
-   function getPos(e) {
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top, t: Date.now() };
-   }
-
-   function smoothStroke(points, passes) {
-      const len = points.length;
-      if (len < 2) return points;
-      
-      // 1. Decimation Filter
-      const filteredPoints = [points[0]];
-      let lastSaved = points[0];
+      const filteredPoints = [s0[0]];
+      let lastSaved = s0[0];
       const distanceThresholdSq = 5 ** 2;
 
       for (let i = 1; i < len; i++) {
-         const p1 = points[i];
+         const p1 = s0[i];
          const dx = p1.x - lastSaved.x;
          const dy = p1.y - lastSaved.y;
          
@@ -480,10 +34,20 @@ function initDrawingCanvas(id) {
             lastSaved = p1;
          }
       }
+
+      return filteredPoints;
+   },
+
+   // remove timestamps from this and everywhere else
+
+   smoothStroke(s0) {
+      const len = s0.length;
+      if (len < 2) return s0;
       
-      // 2. Chaikin's Smoothing
-      let result = filteredPoints;
-      for (let p = 0; p < passes; p++) {
+      let result = pointMath.decimateStroke(s0);
+      
+      // Chaikin's Smoothing
+      for (let p = 0; p < CONFIG.stroke_smoothing_passes; p++) {
          const rLen = result.length;
          if (rLen < 3) break;
          
@@ -495,20 +59,17 @@ function initDrawingCanvas(id) {
             const p0 = result[i];
             const p1 = result[i + 1];
             
-            // Left cut (75% p0, 25% p1)
             nextPass[index++] = {
                x: p0.x * 0.75 + p1.x * 0.25,
-               y: p0.y * 0.75 + p1.y * 0.25,
-               t: p0.t * 0.75 + p1.t * 0.25
+               y: p0.y * 0.75 + p1.y * 0.25
             };
             
-            // Right cut (25% p0, 75% p1)
             nextPass[index++] = {
                x: p0.x * 0.25 + p1.x * 0.75,
-               y: p0.y * 0.25 + p1.y * 0.75,
-               t: p0.t * 0.25 + p1.t * 0.75
+               y: p0.y * 0.25 + p1.y * 0.75
             };
          }
+
          nextPass[index] = result[rLen - 1];
          result = nextPass;
       }
@@ -516,165 +77,169 @@ function initDrawingCanvas(id) {
       return result;
    }
 
-   globalThis._onStrokesChange((currentCount) => {
-      if (window.AnkiStrokes.length == 0 && CONFIG.hint_first_stroke_start) {
+}
 
-         const scaledStroke = referenceKanji[0].map(point => scaleReferencePoint(context, point));
-         ctx.strokeStyle = getColour(0);
-         drawDotHint(context, scaledStroke);
 
+const validationUtils = {
+
+   resampleStroke (s0, pointCount) {
+      if (s0.length < 2 || pointCount < 2) return s0;
+
+      // Step A: Calculate total length and segments
+      let totalLength = 0;
+      const segments = [];
+      for (let i = 0; i < s0.length - 1; i++) {
+         const dist = pointMath.getDistance(s0[i], s0[i + 1]);
+         totalLength += dist;
+         segments.push({ start: s0[i], end: s0[i + 1], length: dist, cumulative: totalLength });
       }
 
-      if (CONFIG._experimental) showComponent(currentCount);
-
-      if (window.AnkiStrokes.length == referenceKanji.length) {
-         setTimeout(() => {
-            if (window.AnkiStrokes.length == referenceKanji.length && CONFIG._experimental) flipToBack();
-         }, 600);
+      // Handle edge case where user clicks down and doesn't move
+      if (totalLength === 0) {
+         return Array(pointCount).fill(null).map(() => ({ x: s0[0].x, y: s0[0].y }));
       }
-   });
 
+      // Step B: Crawl along the path collecting evenly spaced points
+      const interval = totalLength / (pointCount - 1);
+      const resampledPoints = [s0[0]]; // Always include exact start point
 
-   function redrawCanvas() {
-      ctx.clearRect(0, 0, rect.width, rect.height);
+      let currentSegmentIdx = 0;
 
-      ctx.strokeStyle = strokeColor;
+      for (let i = 1; i < pointCount - 1; i++) {
+         const targetDistance = i * interval;
 
-      window.AnkiStrokes.forEach((stroke, idx) => {
-         ctx.strokeStyle = strokeColor;
-         ctx.lineWidth = CONFIG.stroke_line_width;
-         renderStroke(context, stroke)
-      });  
-   }
+         // Find which segment holds this distance target
+         while (currentSegmentIdx < segments.length && segments[currentSegmentIdx].cumulative < targetDistance) {
+            currentSegmentIdx++;
+         }
 
-   canvas.addEventListener("pointerdown", (e) => {
-      isDrawing = true;
-      const startPos = getPos(e);
-      currentStroke = [startPos];
+         // Interpolate cleanly between that specific segment
+         const seg = segments[Math.min(currentSegmentIdx, segments.length - 1)];
+         const prevCumulative = currentSegmentIdx === 0 ? 0 : segments[currentSegmentIdx - 1].cumulative;
+         const segmentProgress = (targetDistance - prevCumulative) / (seg.length || 1);
+
+         resampledPoints.push({
+            x: seg.start.x + (seg.end.x - seg.start.x) * segmentProgress,
+            y: seg.start.y + (seg.end.y - seg.start.y) * segmentProgress
+         });
+      }
+
+      resampledPoints.push(s0[s0.length - 1]); // Always include exact end point
+      return resampledPoints;
+   },
+
+   gradeStrokeDirection(input, target) {
+      // returns %, 100 is same direction, 50 perpendicular, 0 opposite
+
+      const uStart = input[0];
+      const uEnd = input[target.length - 1];
+
+      const rStart = target[0];
+      const rEnd = target[target.length - 1];
+
+      const uVector = { x: uEnd.x - uStart.x, y: uEnd.y - uStart.y };
+      const rVector = { x: rEnd.x - rStart.x, y: rEnd.y - rStart.y };
+
+      const uLen = Math.sqrt(uVector.x * uVector.x + uVector.y * uVector.y) || 1;
+      const rLen = Math.sqrt(rVector.x * rVector.x + rVector.y * rVector.y) || 1;
+
+      const dotProduct = (uVector.x * rVector.x + uVector.y * rVector.y) / (uLen * rLen);
+      return ((dotProduct + 1) / 2) * 100;
+   },
+
+   gradeStrokeLength(input, target) {
+      // returns %, deviation by maxDeviationFactor results in 0
+      const maxDeviationFactor = 6; 
+
+      let inputLength = 0;
+      for (let k = 0; k < input.length - 1; k++) {
+         inputLength += pointMath.getDistance(input[k], input[k + 1]);
+      }
+
+      let targetLength = 0;
+      for (let k = 0; k < target.length - 1; k++) {
+         targetLength += pointMath.getDistance(target[k], target[k + 1]);
+      }
+
+      const maxLen = Math.max(inputLength, targetLength);
+      const minLen = Math.min(inputLength, targetLength);
+      const ratio = maxLen / minLen;
+      const alignment = 1 - (ratio - 1) / (maxDeviationFactor - 1);
+
+      return Math.max(0, alignment) * 100;
+   },
+
+   gradeStrokeShape(input, target) {
+      if (input.length === 0 || target.length === 0) return 0;
+
+      const wobbleForgiveness = 0.10; // 5% of the bounding box size
+      const maxDistanceThreshold = 0.70; // 15% deviation maximum before 0% score
+
+      // Helper to extract bounding box dimensions
+      const getBounds = (stroke) => {
+         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+         for (let i = 0; i < stroke.length; i++) {
+            const p = stroke[i];
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+         }
+         const width = maxX - minX || 1; // Avoid division by zero
+         const height = maxY - minY || 1;
+         return { minX, minY, width, height, maxDim: Math.max(width, height) };
+      };
+
+      const tBounds = getBounds(target);
+      const uBounds = getBounds(input);
+
+      // 1. Normalize the Target stroke into a 0 to 1 bounding square space
+      const normalizedTarget = target.map(p => ({
+         x: (p.x - tBounds.minX) / tBounds.maxDim,
+         y: (p.y - tBounds.minY) / tBounds.maxDim
+      }));
+
+      let totalShapeScore = 0;
       
-      ctx.beginPath();
-      ctx.moveTo(startPos.x, startPos.y);
-   });
-   
-   canvas.addEventListener("pointermove", (e) => {
-      if (!isDrawing) return;
-      currentStroke.push(getPos(e));
-      redrawCanvas();
-      const smoothPoints = smoothStroke(currentStroke, CONFIG.stroke_smoothing_passes);
-      ctx.strokeStyle = strokeColor
-      ctx.lineWidth = CONFIG.stroke_line_width;
-      renderStroke(context, smoothPoints);
-   });
-   
-   window.addEventListener("pointerup", () => {
-      if (!isDrawing) return;
-      isDrawing = false;
-      const smoothedStroke = smoothStroke(currentStroke, CONFIG.stroke_smoothing_passes);
-      if (smoothedStroke.length > 2) window.AnkiStrokes.push(smoothedStroke);
-      redrawCanvas();
-   });
+      for (let j = 0; j < input.length; j++) {
+         const uPt = {
+            x: (input[j].x - uBounds.minX) / uBounds.maxDim,
+            y: (input[j].y - uBounds.minY) / uBounds.maxDim
+         };
 
-   const undoBtn = document.getElementById("undoBtn");
-   const undoBtnText = undoBtn.textContent;
-   let longPressTimeout = null;
-   let isLongPress = false;
+         let minDistanceToPath = Infinity;
+         for (let k = 0; k < normalizedTarget.length; k++) {
+            const tPt = normalizedTarget[k];
+            const dx = uPt.x - tPt.x;
+            const dy = uPt.y - tPt.y;
+            
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDistanceToPath) {
+               minDistanceToPath = dist;
+            }
+         }
 
-   undoBtn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      isLongPress = false;
-
-      undoBtn.textContent = "🧽";
-
-      longPressTimeout = setTimeout(() => {
-         isLongPress = true;
-         
-         window.AnkiStrokes.length = 0;
-         ctx.clearRect(0, 0, rect.width, rect.height);
-         undoBtn.textContent = undoBtnText;
-      }, 500); 
-   });
-
-   undoBtn.addEventListener("pointerup", (e) => {
-      e.preventDefault();
-      clearTimeout(longPressTimeout);
-
-      undoBtn.textContent = undoBtnText;
-
-      if (!isLongPress) {
-         window.AnkiStrokes.pop();
-         redrawCanvas();
-      }
-   });
-
-   undoBtn.addEventListener("pointerleave", () => {
-      clearTimeout(longPressTimeout);
-      undoBtn.textContent = undoBtnText;
-   });
-
-
-   document.getElementById("hintBtn").addEventListener("click", (e) => {
-      e.preventDefault();
-
-      const randomComponent = getRandomComponent();
-
-      if (randomComponent) {
-         const b = document.getElementById("hintBtn")
-         b.innerText = randomComponent;
+         const penalizedDistance = Math.max(0, minDistanceToPath - wobbleForgiveness);
+         const pointScore = Math.max(0, 1 - (penalizedDistance / maxDistanceThreshold));
+         totalShapeScore += pointScore;
       }
 
-      window.__hasShownHint = true;
-   });
+      return (totalShapeScore / input.length) * 100;
+   },
 
-}
+   gradeStroke(idx) {
+      if (idx >= referenceKanji.length) return 0;
+      const referenceStroke = referenceKanji[idx];
 
+      const stroke = window.YuzutanStrokes[idx];
+      const scaledStroke = pointMath.scaleStroke(stroke, 'input');
+      const resampledStroke = validationUtils.resampleStroke(scaledStroke, referenceStroke.length);
 
+      const directionScore = validationUtils.gradeStrokeDirection(resampledStroke, referenceStroke);
+      const lengthScore = validationUtils.gradeStrokeLength(resampledStroke, referenceStroke);
+      const shapeScore = validationUtils.gradeStrokeShape(resampledStroke, referenceStroke);
 
-// rendering input on the back
-
-function initResultCanvas(id) {
-   const context = initContext(id);
-   if (!context) return;
-
-   const { canvas, ctx, rect } = context;
-   const strokeColor = "#000000";
-   ctx.lineWidth = CONFIG.stroke_line_width + 0.5;
-
-   function redrawCanvas() {
-      ctx.clearRect(0, 0, rect.width, rect.height);
-
-      ctx.strokeStyle = strokeColor;
-      window.AnkiStrokes.forEach((stroke, idx) => {
-         const score = gradeStroke(context, idx);
-         ctx.strokeStyle = getGradedColour(score, idx);
-
-         renderColourStroke(context, stroke);
-         drawDotHint(context, stroke);
-      });
+      return Math.min(directionScore, lengthScore, shapeScore);
    }
-
-   let endScore = 0;
-   window.AnkiStrokes.forEach((stroke, idx) => {
-      const { directionScore, lengthScore, shapeScore } = gradeStroke(context, idx);
-      endScore += (directionScore + lengthScore + shapeScore) / 3
-      // endScore = Math.min(endScore, (directionScore + lengthScore + shapeScore) / 3)
-   });  
-
-   endScore = Math.round(endScore / referenceKanji.length);
-   if (window.AnkiStrokes.length != referenceKanji.length) endScore = 0;
-   if (window.__hasShownDiagram) endScore = -1;
-
-   let scoreBox = document.getElementById('kanjiScoreBox');
-   let color = "#e74c3c";
-
-   if (endScore >= 90) color = "#2ecc71";
-   else if (endScore >= 60) color = "#f39c12"; 
-
-   scoreBox.innerHTML = `<span style="color:${color};font-weight:bold;">${endScore}</span> スコア`;
-   
-   redrawCanvas();
 }
-
-
 
 
 const getRandomComponent = (() => {
@@ -707,87 +272,507 @@ const getRandomComponent = (() => {
 })();
 
 
+const canvasUtils = {
 
-function splitmix32(a) {
-    return function() {
-        a |= 0; a = a + 0x9e3779b9 | 0;
-        let t = a ^ (a >>> 16); t = Math.imul(t, 0x21f0aaad);
-        t = t ^ (t >>> 15); t = Math.imul(t, 0x735a2d97);
-        return ((t ^ (t >>> 15)) >>> 0) / 4294967296;
-    }
+   initCanvas (id) {
+      let canvas = document.getElementById(id);
+      if (!canvas) return;
+      
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      ctx.lineWidth = CONFIG.stroke_line_width;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";  
+      
+      return { canvas, ctx, rect };
+   },
+
+   getColor (idx) {
+      if (CONFIG.stroke_order_gradient == 'mono') {
+         const progress = idx / (referenceKanji.length - 1);
+         const lightness = 0.85 - (progress * 0.70); 
+         return !ENV.isDarkMode ? `oklch(${lightness} 0.0 250)` : `oklch(${1-lightness} 0.0 250)`;
+      } else {
+         const hue = ((idx / referenceKanji.length) + 0.08) * 320;
+         return !ENV.isDarkMode ? `oklch(0.69 0.20 ${hue})` : `oklch(0.8 0.27 ${hue})`;
+      }
+   },
+
+   getValidatedColor (score, idx) {
+      const color = canvasUtils.getColor(idx);
+      if (score >= 80) return color;
+
+      const badColour = CONFIG.stroke_order_gradient === 'mono' 
+         ? 'oklch(62.8% 0.2577 29.23)' 
+         : ENV.strokeColor;
+
+      const reductionPercent = Math.min((100 - score) * 1.5, 100);
+      return `color-mix(in oklch, ${color}, ${badColour} ${reductionPercent}%)`;
+   },
+
+   // renderStroke(ctx, stroke) {
+   //    if (stroke.length < 2) return;
+
+   //    ctx.beginPath();
+   //    ctx.moveTo(stroke[0].x, stroke[0].y);
+   //    for (let i = 1; i < stroke.length; i++) {
+   //       ctx.lineTo(stroke[i].x, stroke[i].y);
+   //    }
+   //    ctx.stroke(); 
+   // }
+
+   renderStroke(ctx, stroke) {
+      const len = stroke.length;
+      if (len < 2) return;
+
+      const MAX_WIDTH = ctx.lineWidth;
+      const MIN_WIDTH = MAX_WIDTH * 0.8;
+      const START_TAPER_PX = CONFIG.stroke_line_width * 1;
+      const END_TAPER_PX = CONFIG.stroke_line_width * 2;
+
+      // 1. Pure floating array map (faster allocation than full array object instantiations)
+      const widths = [];
+      widths.length = len;
+      widths[0] = MIN_WIDTH;
+      widths[len - 1] = MIN_WIDTH;
+
+      // 2. Pass 1: Walk forward for the start taper
+      let accumStartDist = 0;
+      let i = 1;
+      const startBound = len - 1;
+      
+      for (; i < startBound; i++) {
+         const pCurrent = stroke[i];
+         const pPrev = stroke[i - 1];
+         accumStartDist += Math.hypot(pCurrent.x - pPrev.x, pCurrent.y - pPrev.y);
+         
+         if (accumStartDist >= START_TAPER_PX) break;
+         widths[i] = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * (accumStartDist / START_TAPER_PX);
+      }
+
+      // Fast-fill the remaining middle space forwards up to the tail block
+      const midFillEnd = len - 1;
+      for (; i < midFillEnd; i++) {
+         widths[i] = MAX_WIDTH;
+      }
+
+      // 3. Pass 2: Walk backward for the live end taper
+      let accumEndDist = 0;
+      for (let j = len - 2; j > 0; j--) {
+         const pCurrent = stroke[j];
+         const pNext = stroke[j + 1];
+         accumEndDist += Math.hypot(pCurrent.x - pNext.x, pCurrent.y - pNext.y);
+         
+         if (accumEndDist >= END_TAPER_PX) break;
+         
+         const endWidth = MIN_WIDTH + (MAX_WIDTH - MIN_WIDTH) * (accumEndDist / END_TAPER_PX);
+         // Keep thinner target if the stroke is tiny and tapers crash into each other
+         if (endWidth < widths[j]) {
+            widths[j] = endWidth;
+         }
+      }
+
+      ctx.save();
+
+      // 4. Render Phase via Quadratic Curves
+      if (len === 2) {
+         const p0 = stroke[0];
+         const p1 = stroke[1];
+         ctx.beginPath();
+         ctx.lineWidth = widths[0];
+         ctx.moveTo(p0.x, p0.y);
+         ctx.lineTo(p1.x, p1.y);
+         ctx.stroke();
+         return;
+      }
+
+      // First Line segment
+      const p0_init = stroke[0];
+      const p1_init = stroke[1];
+      ctx.beginPath();
+      ctx.lineWidth = widths[0];
+      ctx.moveTo(p0_init.x, p0_init.y);
+      ctx.lineTo((p0_init.x + p1_init.x) * 0.5, (p0_init.y + p1_init.y) * 0.5);
+      ctx.stroke();
+
+      // Main Body Curves Loop
+      const renderBound = len - 1;
+      for (let k = 1; k < renderBound; k++) {
+         const p0 = stroke[k - 1];
+         const p1 = stroke[k];
+         const p2 = stroke[k + 1];
+
+         ctx.beginPath();
+         ctx.lineWidth = widths[k];
+         ctx.moveTo((p0.x + p1.x) * 0.5, (p0.y + p1.y) * 0.5);
+         ctx.quadraticCurveTo(p1.x, p1.y, (p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.49999); // bitwise trick avoid float overhead
+         ctx.stroke();
+      }
+
+      // Final Line segment
+      const pSecondToLast = stroke[len - 2];
+      const pLast = stroke[len - 1];
+      ctx.beginPath();
+      ctx.lineWidth = widths[len - 1];
+      ctx.moveTo((pSecondToLast.x + pLast.x) * 0.5, (pSecondToLast.y + pLast.y) * 0.5);
+      ctx.lineTo(pLast.x, pLast.y);
+      ctx.stroke();
+
+      ctx.restore();
+   },
+
+   renderColorStroke(ctx, stroke) {
+      if (stroke.length < 2) return;
+
+      const originalWidth = ctx.lineWidth;
+      const originalColor = ctx.strokeStyle;
+
+      ctx.save();
+
+      // glow
+      // ctx.lineWidth = originalWidth;
+      // const offset = 9999;
+      // ctx.shadowBlur = 12;
+      // ctx.shadowOffsetX = 0;
+      // ctx.shadowOffsetY = offset;
+      // ctx.shadowColor = `color-mix(in srgb, ${originalColor} 15%, transparent)`; 
+      // ctx.translate(0, -offset); 
+      // renderStroke(context, stroke);
+      // ctx.translate(0, offset);
+      // ctx.shadowColor = "transparent"; 
+      // ctx.shadowOffsetY = 0;
+
+      // outline
+      const outlineThickness = 1;
+      ctx.lineWidth = originalWidth + (outlineThickness * 2);
+      ctx.strokeStyle = !ENV.isDarkMode
+         ? "rgba(255, 255, 255, 0.8)"
+         : "rgba(0, 0, 0, 0.8)"
+      canvasUtils.renderStroke(ctx, stroke);
+
+      // line itself
+      ctx.lineWidth = originalWidth;
+      ctx.strokeStyle = originalColor;
+      canvasUtils.renderStroke(ctx, stroke);
+
+      ctx.restore();
+   },
+
+   renderStrokePoint(ctx, p0) {
+      const radius = CONFIG.stroke_line_width * 0.5;
+      const coreColor = ctx.strokeStyle;
+
+      ctx.save(); 
+
+      ctx.beginPath();
+      ctx.arc(p0.x, p0.y, radius + 1, 0, Math.PI * 2);
+      ctx.fillStyle = !ENV.isDarkMode
+         ? "rgba(255, 255, 255, 0.8)"
+         : "rgba(0, 0, 0, 0.8)"
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(p0.x, p0.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = coreColor; 
+      ctx.fill(); 
+
+      ctx.restore();  
+   }
 }
 
 
+// canvases
+
 function initReferenceCanvas(id) {
-   const context = initContext(id);
+   const context = canvasUtils.initCanvas(id);
    if (!context) return;
 
    const { canvas, ctx, rect } = context;
-   ctx.lineWidth = CONFIG.stroke_line_width;
 
-   function redrawReferenceCanvas() {
+   let doShowDiagram = !ENV.isFront;
+   let isSticky = false;
+
+   function clear() {
       ctx.clearRect(0, 0, rect.width, rect.height);
       drawCanvasElement = document.getElementById('drawCanvas');
       if (drawCanvasElement) drawCanvasElement.classList.remove("dimmedCanvas");
+   }
+
+   function render() {
+      clear();
       
-   }
+      if (doShowDiagram || isSticky) {
 
-   function drawStrokeDiagram() {
-      referenceKanji.forEach((stroke, idx) => { 
-         ctx.strokeStyle = getColour(idx);
-         const scaledStroke = stroke.map(point => scaleReferencePoint(context, point));
-         renderColourStroke(context, scaledStroke);
-         drawDotHint(context, scaledStroke);
-      });
-   }
+         drawCanvasElement = document.getElementById('drawCanvas');
+         if (drawCanvasElement) drawCanvasElement.classList.add("dimmedCanvas");
+         
+         referenceKanji.forEach((stroke, idx) => { 
+            ctx.strokeStyle = canvasUtils.getColor(idx);
+            const scaledStroke = pointMath.scaleStroke(stroke);
+            canvasUtils.renderColorStroke(ctx, scaledStroke);
+            canvasUtils.renderStrokePoint(ctx, scaledStroke[0]);
+         });
+      }
 
-   let isShowingDiagram = false;
-
-
-   if (isFrontSide) {
-      window.__hasShownDiagram = false;
-      window.__hasShownHint = false;
-
-      globalThis._onStrokesChange((currentCount) => {
-         redrawReferenceCanvas();
-         isShowingDiagram = false;
+      if (ENV.isFront) {
+         if (CONFIG.hint_first_stroke_start && window.YuzutanStrokes.length == 0) {
+            ctx.strokeStyle = canvasUtils.getColor(0);
+            const firstStrokeStartPoint = pointMath.scalePoint(referenceKanji[0][0]);
+            canvasUtils.renderStrokePoint(ctx, firstStrokeStartPoint);
+         }
 
          if (CONFIG._experimental) circleHell(context);
-
-         if (isFrontSide && currentCount == 0) {
-            // ctx.strokeStyle = "oklch(0.58 0.19 264.4)";
-            // drawDotHint(context, referenceKanji[0], true);
-         }
-      });
-
-      document.getElementById("diagramBtn").addEventListener("click", (e) => {
-         e.preventDefault();
-
-         if (isShowingDiagram) {
-            redrawReferenceCanvas();
-            isShowingDiagram = false;
-         } else {
-            redrawReferenceCanvas();
-            drawStrokeDiagram();
-
-            drawCanvasElement = document.getElementById('drawCanvas');
-            if (drawCanvasElement) drawCanvasElement.classList.add("dimmedCanvas");
-
-            isShowingDiagram = true;
-            window.__hasShownDiagram = true;
-         }
-      });
-
-   } else {
-      redrawReferenceCanvas();
-      drawStrokeDiagram();
+      }
    }
+
+   EVENT.on('drw:addstroke', hide)
+   EVENT.on('drw:remstroke', hide)
+   function hide() {
+      doShowDiagram = false;
+      render();
+   }
+
+   EVENT.on('ref:toggle', toggle)
+   function toggle() {
+      doShowDiagram = !doShowDiagram;
+      render();
+      window.__hasShownDiagram = true;
+   }
+
+   EVENT.on('ref:sticky', () => {
+      isSticky = !isSticky;
+      doShowDiagram = !doShowDiagram;
+      render();
+      window.__hasShownDiagram = true;
+   });
+
+   render();
+   return context;
 }
 
+
+function initDrawingCanvas(id) {
+   const context = canvasUtils.initCanvas(id);
+   if (!context) return;
+
+   const { canvas, ctx, rect } = context;
+   const strokeColor = ENV.strokeColor;
+   
+   let isDrawing = false;
+   let currentStroke = [];
+
+   function getPos(e) {
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+   }
+
+   function render() {
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = CONFIG.stroke_line_width;
+      
+      window.YuzutanStrokes.forEach((stroke) => {
+         canvasUtils.renderStroke(ctx, stroke)
+      });  
+   }
+
+   render();
+
+   EVENT.on('drw:undo', undo)
+   function undo() {
+      window.YuzutanStrokes.pop();
+      EVENT.emit('drw:remstroke');
+      render();
+   }
+
+   EVENT.on('drw:clear', clear)
+   function clear() {
+      window.YuzutanStrokes.length = 0;
+      EVENT.emit('drw:remstroke');
+      render();
+   }
+
+   canvas.addEventListener("pointerdown", (e) => {
+      isDrawing = true;
+      const startPos = getPos(e);
+      currentStroke = [startPos];
+      ctx.beginPath();
+      ctx.moveTo(startPos.x, startPos.y);
+   });
+
+   canvas.addEventListener("pointermove", (e) => {
+      if (!isDrawing) return;
+      currentStroke.push(getPos(e));
+      render();
+      const smoothedStroke = pointMath.smoothStroke(currentStroke);
+      canvasUtils.renderStroke(ctx, smoothedStroke);
+   });
+
+   window.addEventListener("pointerup", () => {
+      if (!isDrawing) return;
+      isDrawing = false;
+      const smoothedStroke = pointMath.smoothStroke(currentStroke);
+      if (smoothedStroke.length > 2) {
+         window.YuzutanStrokes.push(smoothedStroke);
+         EVENT.emit('drw:addstroke');
+      }
+      render();
+   });
+
+   EVENT.emit('drw:addstroke');
+}
+
+
+function initResultCanvas(id) {
+   const context = canvasUtils.initCanvas(id);
+   if (!context) return;
+
+   const { canvas, ctx, rect } = context;
+
+   function render() {
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      window.YuzutanStrokes.forEach((stroke, idx) => {
+         const score = validationUtils.gradeStroke(idx);
+         ctx.strokeStyle = canvasUtils.getValidatedColor(score, idx);
+         canvasUtils.renderColorStroke(ctx, stroke);
+         canvasUtils.renderStrokePoint(ctx, stroke[0]);
+      });
+
+      displayScore();
+   }
+
+   function calcScore() {
+      if (window.YuzutanStrokes.length != referenceKanji.length) return 0;
+
+      let endScore = 0;
+      window.YuzutanStrokes.forEach((stroke, idx) => {
+         endScore += validationUtils.gradeStroke(idx);
+      });
+      
+      return Math.round(endScore / referenceKanji.length); 
+   }
+
+   function displayScore() {
+      let score = calcScore();
+
+      let scoreBox = document.getElementById('kanjiScoreBox');
+
+      let color = "#e74c3c";
+      if (score >= 90) color = "#2ecc71";
+      else if (score >= 60) color = "#f39c12";
+
+      let diagramIcon = window.__hasShownDiagram ? '🧭' : '';
+      let hintIcon = window.__hasShownHint ? '💡' : '';
+
+      scoreBox.innerHTML = `${hintIcon} ${diagramIcon} <span style="color:${color};font-weight:bold;">${score}</span> スコア`;
+   }
+
+   render();
+}
+
+
+// our teeny tiny event bus to wire stuff up
+
+const EVENT = {
+   listeners: {},
+   on(event, fn) { (this.listeners[event] ||= []).push(fn); },
+   emit(event, data) { (this.listeners[event] || []).forEach(fn => fn(data)); }
+};
+
+
+// init
+
+window.YuzutanStrokes = window.YuzutanStrokes || [];
+
+const referenceKanji = (new Function(`return (${`{{ReferenceData}}`})`))();
+const structuralData = (new Function(`return (${`{{StructuralData}}`})`))();
+const componentBreakdown = (new Function(`return (${`{{Breakdown}}`})`))();
+
+const _ref = canvasUtils.initCanvas('referenceCanvas');
+
+const ENV = {
+   isFront: document.querySelector('main').classList.contains('front'),
+   isDarkMode: document.querySelector('body').classList.contains('nightMode'),
+   scale: _ref.rect.width / 109,
+}
+
+ENV.strokeColor = ENV.isDarkMode ? "oklch(0.9 0 none)" : "oklch(0.15 0 none)";
 
 initReferenceCanvas('referenceCanvas');
 initDrawingCanvas('drawCanvas');
 initResultCanvas('resultCanvas');
+
+
+// botans c:
+
+function initButton(buttonId, holdText, onShortPress, onLongPress) {
+   const btn = document.getElementById(buttonId);
+   const originalText = btn.textContent;
+   const delay = 500;
+
+   let timer = null;
+   let isLongPress = false;
+
+   const reset = () => {
+      clearTimeout(timer);
+      timer = null;
+      if (holdText) btn.textContent = originalText;
+   };
+
+   btn.addEventListener("pointerdown", () => {
+      isLongPress = false;
+      if (holdText) btn.textContent = holdText;
+
+      timer = setTimeout(() => {
+         isLongPress = true;
+         reset();
+         if (onLongPress) onLongPress();
+      }, delay);
+   });
+
+   btn.addEventListener("pointerup", () => {
+      if (!timer && !isLongPress) return;
+      reset();
+      if (!isLongPress) onShortPress();
+   });
+
+   btn.addEventListener("pointerleave", reset);
+   btn.addEventListener("pointercancel", reset);
+}
+
+if (ENV.isFront) {
+
+   initButton(
+      'undoBtn', '🧽',
+      () => EVENT.emit('drw:undo'),
+      () => EVENT.emit('drw:clear')
+   )
+
+   initButton(
+      'diagramBtn', '📌',
+      () => EVENT.emit('ref:toggle'),
+      () => EVENT.emit('ref:sticky')
+   )
+
+   initButton(
+      'hintBtn', false,
+      () => {
+         const randomComponent = getRandomComponent();
+         if (randomComponent) document.getElementById("hintBtn").innerText = randomComponent;
+         window.__hasShownHint = true;
+      }
+   )
+}
+
+
 
 
 // prompt text selection and handling
@@ -806,7 +791,7 @@ function getRandomSeededElement(arr) {
 }
 
 function marufy(sentence) {
-   if (!isFrontSide) return sentence;
+   if (!ENV.isFront) return sentence;
    
    let index;
    const maskLength = CONFIG.text_kanji_mask.length;
@@ -858,7 +843,7 @@ keys.forEach(key => {
    }
 });
 
-if (isFrontSide) {
+if (ENV.isFront) {
    promptWordContainer.innerHTML = furiganify(marufy(selectedValue));
    promptRestContainer.innerHTML = restWords.map(word => `<div>${word}</div>`).join("");
 } else {
@@ -889,11 +874,65 @@ if (isFrontSide) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ============================= EXPERIMENTS =============================
 // ==                                                                   ==
 // ==                 abandon all hope ye who enter here                ==
 // ==                                                                   ==
 // =======================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// function splitmix32(a) {
+//     return function() {
+//         a |= 0; a = a + 0x9e3779b9 | 0;
+//         let t = a ^ (a >>> 16); t = Math.imul(t, 0x21f0aaad);
+//         t = t ^ (t >>> 15); t = Math.imul(t, 0x735a2d97);
+//         return ((t ^ (t >>> 15)) >>> 0) / 4294967296;
+//     }
+// }
 
 
 
@@ -938,7 +977,7 @@ function showComponent(strokeidx) {
 //    const MIN_RADIUS = 6;
 
 //    const strokeCount = referenceKanji.length;
-//    const userCount = window.AnkiStrokes.length;
+//    const userCount = window.YuzutanStrokes.length;
 
 //    let multiplier;
 //    if (strokeCount <= BASE_STROKES) {
@@ -962,7 +1001,7 @@ function showComponent(strokeidx) {
 //          angle = nextRandom() * 2 * Math.PI;
 //          r = nextRandom() * radius;
 //       } else {
-//          p0 = window.AnkiStrokes[idx][0];
+//          p0 = window.YuzutanStrokes[idx][0];
 //          radius = MIN_RADIUS;
 //          angle = 0;
 //          r = 0;
@@ -1202,7 +1241,7 @@ const capRadius = gridSpacing * 0.42; // 90% of the maximum allowed radius (prev
 const minAllowedRadius = 2;         // Prevents rendering sub-pixel artifacts
 
 ctx.fillStyle = "#FFFFFF"; 
-ctx.strokeStyle = "rgba(142, 142, 147, 0.7)";
+ctx.strokeStyle = "rgba(142, 142, 147, 0.8)";
 ctx.lineWidth = 0.8;
 
 // Helper: Bilinear interpolation to sample height values
@@ -1324,11 +1363,9 @@ thresholds.forEach((isoLevel) => {
             let renderPos = { x, y };
             let edgePos = { x: x + targetRadius, y }; // Use a sample point to calculate scaled radius factor
 
-            if (typeof scaleReferencePoint === 'function') {
-               renderPos = scaleReferencePoint(context, renderPos);
-               edgePos = scaleReferencePoint(context, edgePos);
-            }
-
+            renderPos = pointMath.scalePoint(renderPos);
+            edgePos = pointMath.scalePoint(edgePos);
+            
             // Calculate the actual scaled radius dynamically based on the current context scale matrix
             const scaledRadius = Math.abs(edgePos.x - renderPos.x);
 
@@ -1365,8 +1402,8 @@ thresholds.forEach((isoLevel) => {
       const { t, x, y } = hint;
 
       // Handle coordinate space scaling transformation if present
-      const renderX = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, { x, y }).x : x;
-      const renderY = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, { x, y }).y : y;
+      const renderX = pointMath.scalePoint({ x, y }).x;
+      const renderY = pointMath.scalePoint({ x, y }).y;
 
       ctx.save();
       
