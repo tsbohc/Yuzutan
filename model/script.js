@@ -707,6 +707,8 @@ ENV.strokeColor = ENV.isDarkMode ? "oklch(0.9 0 none)" : "oklch(0.15 0 none)";
 
 if (ENV.isFront) {
    window.YuzutanStrokes = [];
+   window.__hasShownDiagram = false;
+   window.__hasShownHint = false;
 } else {
    window.YuzutanStrokes = window.YuzutanStrokes || [];
 }
