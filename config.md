@@ -59,9 +59,11 @@ Here's a short guide:
 Credits for the converted [JmdictFurigana](https://github.com/Doublevil/JmdictFurigana) are in this [issue](https://github.com/yomidevs/yomitan/issues/2451).
 
 
-## 🎨 note interface
+## 🎨 interface
 
-All buttons can also be long-pressed for additional functionality:
+Addon's menu is under **Tools** -> **Yuzutan** in the Anki menu bar. Adjust the config, generate the deck from there. 
+
+During reviews, all buttons can also be long-pressed for additional functionality:
 
 - 🧹・🧽 undo last stroke; clear canvas
 - 💡・🌧️ step through manual hint; toggle auto hint
