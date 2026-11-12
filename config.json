@@ -9,6 +9,9 @@
       "stroke_line_width": 8.5,
       "stroke_smoothing_passes": 2,
       "hint_first_stroke_start": true,
+      "hint_noise_manual_step": 0.2,
+      "hint_noise_auto_timeframe": 15,
+      "hint_noise_auto_grace_period": 2,
       "_experimental": false
    },
    "source_fields": {

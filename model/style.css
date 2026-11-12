@@ -2,7 +2,7 @@
 /* witches' catpuccin light */
 :root {
    --canvas-1: rgb(249, 250, 251, 0.5);
-   --canvas-2: rgb(230, 231, 232, 0.5);
+   --canvas-2: rgb(225, 226, 227, 0.5);
    --canvas-s: rgba(255, 255, 255, 0.5);
    --canvas-border: rgb(154, 156, 160, 0.4);
    --dim-background: rgb(230, 233, 239);
@@ -21,7 +21,7 @@
 .nightMode {
    --canvas-1: rgb(160, 160, 160, 0.1);
    --canvas-2: rgb(120, 120, 120, 0.1);
-   --canvas-s: rgba(160, 160, 160, 0.1);
+   --canvas-s: rgba(120, 120, 120, 0.09);
    --canvas-border: rgb(100, 100, 100, 0.3);
    --dim-background: rgb(154, 156, 160, 0.1);
 }
@@ -113,23 +113,30 @@ main .column:last-child {
    border-radius: 0.6rem;
    /* overflow: hidden; */
    background:
-      /* Horizontal 2x2 Grid Line*/
-      linear-gradient(to bottom,
-         transparent calc(50% - 2px),
-         var(--canvas-s) calc(50% - 2px) calc(50% + 2px),
-         transparent calc(50% + 2px)),
-      /* Vertical 2x2 Grid Line */
-      linear-gradient(to right,
-         transparent calc(50% - 2px),
-         var(--canvas-s) calc(50% - 2px) calc(50% + 2px),
-         transparent calc(50% + 2px)),
-      /* 3x3 Checkerboard Pattern */
-      conic-gradient(var(--canvas-2) 25%,
+      /* 1. Left Horizontal Third (4px tall, left 1/3 wide) */
+      linear-gradient(var(--canvas-s), var(--canvas-s)) 
+         center left / calc(100% / 3) 4px no-repeat,
+
+      /* 2. Right Horizontal Third (4px tall, right 1/3 wide) */
+      linear-gradient(var(--canvas-s), var(--canvas-s)) 
+         center right / calc(100% / 3) 4px no-repeat,
+
+      /* 3. Top Vertical Third (4px wide, top 1/3 tall) */
+      linear-gradient(var(--canvas-s), var(--canvas-s)) 
+         top center / 4px calc(100% / 3) no-repeat,
+
+      /* 4. Bottom Vertical Third (4px wide, bottom 1/3 tall) */
+      linear-gradient(var(--canvas-s), var(--canvas-s)) 
+         bottom center / 4px calc(100% / 3) no-repeat,
+
+      /* 5. 3x3 Checkerboard Pattern */
+      conic-gradient(
+         var(--canvas-2) 25%,
          var(--canvas-1) 0 50%,
          var(--canvas-2) 0 75%,
-         var(--canvas-1) 0);
-   background-size: 100% 100%, 100% 100%, 66.6666% 66.6666%;
-   box-shadow: 0 0 1.2rem rgba(0, 0, 0, 0.05);
+         var(--canvas-1) 0
+      ) top left / calc(200% / 3) calc(200% / 3);
+   box-shadow: 0 0 1.2rem rgba(0, 0, 0, 0.04);
 }
 
 .canvas-container::before {

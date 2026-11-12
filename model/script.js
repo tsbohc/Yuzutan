@@ -22,7 +22,7 @@ const pointMath = {
 
       const filteredPoints = [s0[0]];
       let lastSaved = s0[0];
-      const distanceThresholdSq = 5 ** 2;
+      const distanceThresholdSq = 3 ** 2;
 
       for (let i = 1; i < len; i++) {
          const p1 = s0[i];
@@ -229,7 +229,7 @@ const validationUtils = {
       if (idx >= referenceKanji.length) return 0;
       const referenceStroke = referenceKanji[idx];
 
-      const stroke = window.YuzutanStrokes[idx];
+      const stroke = window.yuzutan.strokes[idx];
       const scaledStroke = pointMath.scaleStroke(stroke, 'input');
       const resampledStroke = validationUtils.resampleStroke(scaledStroke, referenceStroke.length);
 
@@ -489,6 +489,7 @@ const canvasUtils = {
 }
 
 
+
 // canvases
 
 function initReferenceCanvas(id) {
@@ -508,15 +509,22 @@ function initReferenceCanvas(id) {
       if (canvasContainer) canvasContainer.style.backdropFilter = 'blur(0px)';
    }
 
+   EVENT.on('ref:render', render);
    function render() {
       clear();
+
+      if (ENV.isFront) {
+         renderNoiseHints(ctx);
+
+         if (CONFIG.hint_first_stroke_start && window.yuzutan.strokes.length == 0) {
+            ctx.strokeStyle = canvasUtils.getColor(0);
+            const firstStrokeStartPoint = pointMath.scalePoint(referenceKanji[0][0]);
+            canvasUtils.renderStrokePoint(ctx, firstStrokeStartPoint);
+         }
+      }
       
       if (doShowDiagram || isSticky) {
-
-         // drawCanvasElement = document.getElementById('drawCanvas');
-         // if (drawCanvasElement) drawCanvasElement.classList.add("dimmedCanvas");
          const canvasContainer = document.getElementById('referenceCanvasContainer');
-         // if (canvasContainer) canvasContainer.classList.add('dimmingCanvas');
          if (canvasContainer) canvasContainer.style.backdropFilter = 'blur(4px)';
          
          referenceKanji.forEach((stroke, idx) => { 
@@ -527,15 +535,6 @@ function initReferenceCanvas(id) {
          });
       }
 
-      if (ENV.isFront) {
-         if (CONFIG.hint_first_stroke_start && window.YuzutanStrokes.length == 0) {
-            ctx.strokeStyle = canvasUtils.getColor(0);
-            const firstStrokeStartPoint = pointMath.scalePoint(referenceKanji[0][0]);
-            canvasUtils.renderStrokePoint(ctx, firstStrokeStartPoint);
-         }
-
-         if (CONFIG._experimental) circleHell(context);
-      }
    }
 
    EVENT.on('drw:addstroke', hide)
@@ -549,14 +548,14 @@ function initReferenceCanvas(id) {
    function toggle() {
       doShowDiagram = !doShowDiagram;
       render();
-      window.__hasShownDiagram = true;
+      window.yuzutan.hasShownDiagram = true;
    }
 
    EVENT.on('ref:sticky', () => {
       doShowDiagram = isSticky ? false : !doShowDiagram;
       isSticky = !isSticky;
       render();
-      window.__hasShownDiagram = true;
+      window.yuzutan.hasShownDiagram = true;
    });
 
    render();
@@ -571,7 +570,7 @@ function initDrawingCanvas(id) {
    const { canvas, ctx, rect } = context;
    const strokeColor = ENV.strokeColor;
    
-   let isDrawing = false;
+   ENV.isPenDown = false;
    let currentStroke = [];
 
    function getPos(e) {
@@ -583,7 +582,7 @@ function initDrawingCanvas(id) {
       ctx.strokeStyle = strokeColor;
       ctx.lineWidth = CONFIG.stroke_line_width;
       
-      window.YuzutanStrokes.forEach((stroke) => {
+      window.yuzutan.strokes.forEach((stroke) => {
          canvasUtils.renderStroke(ctx, stroke)
       });  
    }
@@ -592,20 +591,20 @@ function initDrawingCanvas(id) {
 
    EVENT.on('drw:undo', undo)
    function undo() {
-      window.YuzutanStrokes.pop();
+      window.yuzutan.strokes.pop();
       EVENT.emit('drw:remstroke');
       render();
    }
 
    EVENT.on('drw:clear', clear)
    function clear() {
-      window.YuzutanStrokes.length = 0;
+      window.yuzutan.strokes.length = 0;
       EVENT.emit('drw:remstroke');
       render();
    }
 
    canvas.addEventListener("pointerdown", (e) => {
-      isDrawing = true;
+      ENV.isPenDown = true;
       const startPos = getPos(e);
       currentStroke = [startPos];
       ctx.beginPath();
@@ -613,19 +612,22 @@ function initDrawingCanvas(id) {
    });
 
    canvas.addEventListener("pointermove", (e) => {
-      if (!isDrawing) return;
-      currentStroke.push(getPos(e));
+      if (!ENV.isPenDown) return;
+      const point = getPos(e);
+      const assisted_point = applyAimAssist(point);
+      currentStroke.push(assisted_point);
+      eraseNoiseNearPen(point);
       render();
       const smoothedStroke = pointMath.smoothStroke(currentStroke);
       canvasUtils.renderStroke(ctx, smoothedStroke);
    });
 
    window.addEventListener("pointerup", () => {
-      if (!isDrawing) return;
-      isDrawing = false;
+      if (!ENV.isPenDown) return;
+      ENV.isPenDown = false;
       const smoothedStroke = pointMath.smoothStroke(currentStroke);
       if (smoothedStroke.length > 2) {
-         window.YuzutanStrokes.push(smoothedStroke);
+         window.yuzutan.strokes.push(smoothedStroke);
          EVENT.emit('drw:addstroke');
       }
       render();
@@ -644,7 +646,7 @@ function initResultCanvas(id) {
    function render() {
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      window.YuzutanStrokes.forEach((stroke, idx) => {
+      window.yuzutan.strokes.forEach((stroke, idx) => {
          const score = validationUtils.gradeStroke(idx);
          ctx.strokeStyle = canvasUtils.getValidatedColor(score, idx);
          canvasUtils.renderColorStroke(ctx, stroke);
@@ -655,10 +657,10 @@ function initResultCanvas(id) {
    }
 
    function calcScore() {
-      if (window.YuzutanStrokes.length != referenceKanji.length) return 0;
+      if (window.yuzutan.strokes.length != referenceKanji.length) return 0;
 
       let endScore = 0;
-      window.YuzutanStrokes.forEach((stroke, idx) => {
+      window.yuzutan.strokes.forEach((stroke, idx) => {
          endScore += validationUtils.gradeStroke(idx);
       });
       
@@ -674,10 +676,15 @@ function initResultCanvas(id) {
       if (score >= 90) color = "#2ecc71";
       else if (score >= 60) color = "#f39c12";
 
-      let diagramIcon = window.__hasShownDiagram ? '🧭' : '';
-      let hintIcon = window.__hasShownHint ? '💡' : '';
+      let diagramIcon = window.yuzutan.hasShownDiagram ? '🧭' : '';
+      let hintIcon = '';
+      let noiseIndicator = ''
+      if (window.yuzutan.visibleNoisePercent > 0) {
+         noiseIndicator = Math.round(Math.pow(window.yuzutan.visibleNoisePercent, 1.5) * 100); // note: this has to match the rendering function
+         hintIcon = '💡';
+      }
 
-      scoreBox.innerHTML = `${hintIcon} ${diagramIcon} <span style="color:${color};font-weight:bold;">${score}</span> スコア`;
+      scoreBox.innerHTML = `<span style="color:${color};font-weight:bold;">${score}</span> スコア ${hintIcon} <span style="font-weight:bold;">${noiseIndicator}</span> ${diagramIcon}`;
    }
 
    render();
@@ -708,15 +715,23 @@ const ENV = {
    scale: _ref.rect.width / 109,
 }
 
+if (ENV.isFront) {
+   window.yuzutan = window.yuzutan || {};
+   window.yuzutan.strokes = [];
+   window.yuzutan.visibleNoisePercent = 0;
+   window.yuzutan.hasShownDiagram = false;
+} else {
+   window.yuzutan.strokes = window.yuzutan.strokes || [];
+}
+
+
+ENV.allScheduledNoisePoints = [];
+ENV.autoHintTimer = null;
+ENV.cardStartTime = null;
+ENV.recallLatencyMs = null;
+
 ENV.strokeColor = ENV.isDarkMode ? "oklch(0.9 0 none)" : "oklch(0.15 0 none)";
 
-if (ENV.isFront) {
-   window.YuzutanStrokes = [];
-   window.__hasShownDiagram = false;
-   window.__hasShownHint = false;
-} else {
-   window.YuzutanStrokes = window.YuzutanStrokes || [];
-}
 
 initReferenceCanvas('referenceCanvas');
 initDrawingCanvas('drawCanvas');
@@ -761,6 +776,13 @@ function initButton(buttonId, holdText, onShortPress, onLongPress) {
 }
 
 if (ENV.isFront) {
+   prepareAutoHintNoise();
+   
+   if (window.yuzutan.autoHint) {
+      window.yuzutan.visibleNoisePercent = 0;
+      startAutoHint();
+      EVENT.emit('ref:render');
+   }
 
    initButton(
       'undoBtn', '🧽',
@@ -775,11 +797,19 @@ if (ENV.isFront) {
    )
 
    initButton(
-      'hintBtn', false,
+      'hintBtn', '🌧️',
       () => {
-         const randomComponent = getRandomComponent();
-         if (randomComponent) document.getElementById("hintBtn").innerText = randomComponent;
-         window.__hasShownHint = true;
+         window.yuzutan.visibleNoisePercent = Math.min(1.0, window.yuzutan.visibleNoisePercent + CONFIG.hint_noise_manual_step);
+         EVENT.emit('ref:render');
+      },
+      () => {
+         if (!window.yuzutan.autoHint) {
+            window.yuzutan.autoHint = true;
+            startAutoHint();
+            EVENT.emit('ref:render');
+         } else {
+            window.yuzutan.autoHint = false;         
+         }
       }
    )
 }
@@ -914,6 +944,177 @@ if (ENV.isFront) {
 
 
 
+// noise stuff is going core, most flexible and universal hint style so far
+
+function eraseNoiseNearPen(rawPenPos) {
+   const points = ENV.allScheduledNoisePoints;
+   if (!points) return;
+
+   const penPos = pointMath.scalePoint(rawPenPos, 'input');
+   const eraseRadiusSq = 6 * 6; // 9 units in 109x109 canvas space
+   let changed = false;
+
+   for (let i = 0; i < points.length; i++) {
+      const pt = points[i];
+      if (pt.erased) continue;
+
+      const dx = pt.x - penPos.x;
+      const dy = pt.y - penPos.y;
+      if (dx * dx + dy * dy <= eraseRadiusSq) {
+         pt.erased = true;
+         changed = true;
+      }
+   }
+
+   if (changed) EVENT.emit('ref:render');
+}
+
+
+function renderNoiseHints(ctx) {
+   const points = ENV.allScheduledNoisePoints;
+   const rawPercent = window.yuzutan.visibleNoisePercent || 0;
+   if (!points || points.length === 0 || rawPercent <= 0) return;
+
+   const easePower = 1.5;
+   const percent = Math.pow(rawPercent, easePower);
+
+   const minAlpha = 0.50;
+   const maxAlpha = 1.00;
+
+   const minRadius = 2.0;
+   const maxRadius = 3.0;
+   
+   const fadeWindow = Math.max(1, points.length * 0.03);
+   const exactLimit = points.length * percent;
+   const limit = Math.min(points.length, Math.ceil(exactLimit));
+
+   ctx.save();
+   ctx.fillStyle = ENV.strokeColor;
+
+   for (let i = 0; i < limit; i++) {
+      const pt = points[i];
+      if (pt.erased) continue;
+      const scaled = pointMath.scalePoint(pt);
+
+      const fadeProgress = Math.min(1, Math.max(0, (exactLimit - i) / fadeWindow));
+      const rHash = ((Math.sin(pt.x * 12.9898 + pt.y * 78.233 + i) * 43758.5453) % 1 + 1) % 1;
+      const r = minRadius + rHash * (maxRadius - minRadius);
+
+      const baseAlpha = minAlpha + pt.closeness * (maxAlpha - minAlpha);
+      ctx.globalAlpha = baseAlpha * fadeProgress;
+      ctx.beginPath();
+      ctx.arc(scaled.x, scaled.y, r, 0, Math.PI * 2);
+      ctx.fill();
+   }
+
+   ctx.restore();
+}
+
+
+
+
+
+
+function shuffleArray(arr) {
+   for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+   }
+   return arr;
+}
+
+
+
+function prepareAutoHintNoise() {
+   const offsetRadius = 2.5;
+   const uniformity = 0.7;
+   const perStrokeBuckets = [];
+
+   referenceKanji.forEach((stroke) => {
+      const pool = stroke.map((_, i) => i);
+      const strokeSpecks = [];
+
+      while (pool.length > 0) {
+         const uniformPos = Math.floor(pool.length / 2);
+         // const uniformPos = 0;
+         const randomPos = Math.floor(Math.random() * pool.length);
+         const pickIdx = Math.max(0, Math.min(pool.length - 1, Math.round(randomPos * (1 - uniformity) + uniformPos * uniformity)));
+
+         const basePt = stroke.at(pool.splice(pickIdx, 1).at(0));
+         const angle = Math.random() * Math.PI * 2;
+         const dist = Math.sqrt(Math.random()) * offsetRadius;
+
+         strokeSpecks.push({
+            x: basePt.x + Math.cos(angle) * dist,
+            y: basePt.y + Math.sin(angle) * dist,
+            closeness: 1 - (dist / offsetRadius)
+         });
+      }
+      perStrokeBuckets.push(strokeSpecks);
+   });
+
+   ENV.allScheduledNoisePoints = [];
+   const maxLen = Math.max(...perStrokeBuckets.map(b => b.length));
+   for (let i = 0; i < maxLen; i++) {
+      for (const bucket of perStrokeBuckets) {
+         if (i < bucket.length) ENV.allScheduledNoisePoints.push(bucket[i]);
+      }
+   }
+
+   shuffleArray(ENV.allScheduledNoisePoints);
+
+   window.yuzutan.visibleNoisePercent = 0;
+   ENV.recallLatencyMs = null;
+}
+
+
+
+function startAutoHint() {
+   clearInterval(window._kanjiAutoHintTimer);
+
+   const gracePeriodMs = CONFIG.hint_noise_auto_grace_period; // Initial wait before any dots appear on card load
+   const strokePauseMs = CONFIG.hint_noise_auto_grace_period; // Wait time after lifting the pen before resuming dots
+   const maxPercent = 1.0;    // Ceiling cap (stops early at 50%)
+   const secondsToMax = CONFIG.hint_noise_auto_timeframe;    // Seconds it would take to reach 100% (1.0)
+   const fps = 30;             // Updates per second
+
+   const intervalMs = 1000 / fps;
+   const stepPercent = 1.0 / (secondsToMax * fps);
+
+   let idleMs = 0;
+   let hasDrawnOnce = false;
+
+   // Unique token for this specific card instance
+   const runId = Symbol();
+   window._kanjiAutoHintRunId = runId;
+
+   window._kanjiAutoHintTimer = setInterval(() => {
+      if (window._kanjiAutoHintRunId !== runId) {
+         clearInterval(window._kanjiAutoHintTimer);
+         return;
+      }
+
+      if (ENV.isPenDown) {
+         hasDrawnOnce = true;
+         idleMs = 0;
+         return;
+      }
+
+      const requiredWaitMs = hasDrawnOnce ? strokePauseMs : gracePeriodMs;
+      if (idleMs < requiredWaitMs) {
+         idleMs += intervalMs;
+         return;
+      }
+
+      if (window.yuzutan.visibleNoisePercent >= maxPercent) {
+         clearInterval(window._kanjiAutoHintTimer);
+         return;
+      }
+
+      window.yuzutan.visibleNoisePercent = Math.min(maxPercent, window.yuzutan.visibleNoisePercent + stepPercent);
+      EVENT.emit('ref:render');
+   }, intervalMs);
+}
 
 
 
@@ -928,23 +1129,51 @@ if (ENV.isFront) {
 
 
 
+// this is a meme, but feels nice at low values on a bad tablet
+// could experiment with offsetting the points if the stroke is too far away
+// that would provide real time feedback
 
+function applyAimAssist(rp) {
 
+   if (!CONFIG._experimental) return rp;
 
+   const strokeIndex = window.yuzutan.strokes.length;
+   const targetStroke = referenceKanji[strokeIndex];
 
+   if (!targetStroke) return rp;
 
+   const minStrength = 0.0;
+   const maxStrength = 0.1;
+   const maxRadius = 109 * 0.5;
 
+   let rawPoint = pointMath.scalePoint(rp, 'input')
 
+   let closestPoint = targetStroke[0];
+   let minDistanceSq = Infinity;
 
+   // Directly find the closest sampled point
+   for (let i = 0; i < targetStroke.length; i++) {
+      const pt = targetStroke[i];
+      const dx = rawPoint.x - pt.x;
+      const dy = rawPoint.y - pt.y;
+      const distSq = dx * dx + dy * dy;
 
-// function splitmix32(a) {
-//     return function() {
-//         a |= 0; a = a + 0x9e3779b9 | 0;
-//         let t = a ^ (a >>> 16); t = Math.imul(t, 0x21f0aaad);
-//         t = t ^ (t >>> 15); t = Math.imul(t, 0x735a2d97);
-//         return ((t ^ (t >>> 15)) >>> 0) / 4294967296;
-//     }
-// }
+      if (distSq < minDistanceSq) {
+         minDistanceSq = distSq;
+         closestPoint = pt;
+      }
+   }
+
+   const dist = Math.sqrt(minDistanceSq)
+   const t = Math.min(1, dist / maxRadius);
+   const strength = maxStrength + (minStrength - maxStrength) * t;
+
+   // Pull the pen halfway toward the closest reference point
+   return pointMath.scalePoint({
+      x: rawPoint.x + (closestPoint.x - rawPoint.x) * strength,
+      y: rawPoint.y + (closestPoint.y - rawPoint.y) * strength
+   });
+}
 
 
 
@@ -962,816 +1191,30 @@ function flipToBack() {
 }
 
 
+if (CONFIG._experimental) {
 
-
-function showComponent(strokeidx) {
-   let id = String(strokeidx);
-   
-   if (componentBreakdown[id]) {
-      const currentComponent = document.getElementById("currentComponent");
-      currentComponent.innerText = componentBreakdown[id];
-      currentComponent.classList.remove("flash-active");
-      currentComponent.offsetWidth;
-      currentComponent.classList.add("flash-active");
-   }
-}
-
-
-
-
-// function circleHell(context) {
-//    const { ctx } = context
-
-//    const DEFAULT_RADIUS = 16;
-//    const BASE_STROKES = 10;
-   
-//    const SCALING_FACTOR = 0.05; 
-//    const MIN_RADIUS = 6;
-
-//    const strokeCount = referenceKanji.length;
-//    const userCount = window.YuzutanStrokes.length;
-
-//    let multiplier;
-//    if (strokeCount <= BASE_STROKES) {
-//       multiplier = 1 / (1 - (BASE_STROKES - strokeCount) * SCALING_FACTOR);
-//    } else {
-//       multiplier = 1 - (strokeCount - BASE_STROKES) * SCALING_FACTOR;
-//    }
-
-//    // const radius = Math.max(MIN_RADIUS, DEFAULT_RADIUS * multiplier);
-
-//    referenceKanji.forEach((stroke, idx) => {
-//       let p0
-//       let radius
-//       let angle
-//       let r
-
-//       if (userCount < idx + 1) {
-//          p0 = scaleReferencePoint(context, stroke[0]);
-//          radius = Math.max(MIN_RADIUS, DEFAULT_RADIUS * multiplier);
-//          const nextRandom = splitmix32(Math.round(p0.x * 100 + p0.y * 100 + idx))
-//          angle = nextRandom() * 2 * Math.PI;
-//          r = nextRandom() * radius;
-//       } else {
-//          p0 = window.YuzutanStrokes[idx][0];
-//          radius = MIN_RADIUS;
-//          angle = 0;
-//          r = 0;
-//       }
-      
-//       const pC = {
-//          x: p0.x + r * Math.cos(angle),
-//          y: p0.y + r * Math.sin(angle)
-//       };
-
-//       const outlineThickness = 1; 
-//       const coreColor = getColour(idx);
-
-//       ctx.save(); 
-
-//       ctx.beginPath();
-//       ctx.arc(pC.x, pC.y, radius + outlineThickness, 0, Math.PI * 2);
-//       ctx.fillStyle = "#ffffff";
-//       ctx.fill();
-
-//       ctx.beginPath();
-//       ctx.arc(pC.x, pC.y, radius, 0, Math.PI * 2);
-//       ctx.fillStyle =  `color-mix(in oklch, ${coreColor}, transparent 70%)`; 
-//       ctx.fill(); 
-
-//       ctx.restore();  
-//    })
-// }
-
-
-
-// function circleHell(context) {
-//    const { ctx } = context;
-
-//    const radius = 6;
-
-//    referenceKanji.forEach((stroke, idx) => {
-//       const p0 = scaleReferencePoint(context, stroke[0]);
-//       const p9 = scaleReferencePoint(context, stroke.at(-1));
-
-//       ctx.save();
-      
-//       ctx.beginPath();
-//       ctx.fillStyle = '#8e8e93';
-//       ctx.arc(p0.x, p0.y, radius, 0, 2 * Math.PI);
-//       ctx.arc(p9.x, p9.y, radius, 0, 2 * Math.PI);
-//       ctx.fill();
-
-//       ctx.restore();
-//    });
-
-//    structuralData.forEach((hint) => {
-//       const { t, x, y } = hint;
-
-//       // Handle coordinate space scaling transformation if present
-//       const renderX = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, { x, y }).x : x;
-//       const renderY = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, { x, y }).y : y;
-
-//       ctx.save();
-      
-//       if (t === 'joint') {
-//          ctx.fillStyle = '#8e8e93'; //'#ff3b30';
-//       } else if (t === 'angle') {
-//          ctx.fillStyle = '#8e8e93'; //'#007aff';
-//       } else if (t === 'floater') {
-//          ctx.fillStyle = '#8e8e93';
-//       }
-
-//       if (t != 'floater') {
-//          ctx.beginPath();
-//          ctx.arc(renderX, renderY, radius, 0, 2 * Math.PI);
-//          ctx.fill();
-//       }
-
-//       ctx.restore();
-//    });
-// }
-
-
-function calculateKanjiHeightmap(strokes, features, options = {}) {
-   // 1. Destructure configurations with safe defaults matching your Python logic
-   const gridSize = options.gridSize || 32;
-   const canvasScale = options.canvasScale || 109;
-   const featureWeight = options.featureWeight !== undefined ? options.featureWeight : 2.0;
-   const pointWeight = options.pointWeight !== undefined ? options.pointWeight : 1.0;
-   const influenceRadius = options.influenceRadius || 15.0;
-
-   // 2. Initialize a clean 2D grid matrix of size [gridSize][gridSize] filled with zeros
-   const heightmap = Array.from({ length: gridSize }, () => new Array(gridSize).fill(0.0));
-   
-   // Calculate spatial coordinate spacing between cell rows and columns
-   const step = canvasScale / (gridSize - 1);
-   
-   // Flatten your array of arrays of points [[{x, y}, ...], [...]] into a single 1D array
-   const normalPoints = strokes.flat();
-
-   // 3. Loop through every row and column cell intersection in the coordinate grid matrix
-   for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-         // Calculate absolute spatial canvas coordinates for this grid node intersection
-         const gx = c * step;
-         const gy = r * step;
-         
-         let nodeHeight = 0.0;
-
-         // --- Tier A: Accumulate Regular Path Point Proximity ---
-         for (let i = 0; i < normalPoints.length; i++) {
-            const p = normalPoints[i];
-            const dx = gx - p.x;
-            const dy = gy - p.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-
-            if (d < influenceRadius) {
-               // Linear falloff matrix: maximum weight at the center, fading out to 0 at the boundary limit
-               nodeHeight += pointWeight * (1.0 - (d / influenceRadius));
-            }
-         }
-
-         // --- Tier B: Accumulate High-Value Feature Landmark Proximity ---
-         for (let i = 0; i < features.length; i++) {
-            const f = features[i];
-            const dx = gx - f.x;
-            const dy = gy - f.y;
-            const d = Math.sqrt(dx * dx + dy * dy);
-
-            if (d < influenceRadius) {
-               // Features stack the identical falloff trend, multiplied by the higher tier weight factor
-               nodeHeight += featureWeight * (1.0 - (d / influenceRadius));
-            }
-         }
-
-         // 4. Round values to 4 decimal points to avoid float noise and store in matrix grid cell
-         heightmap[r][c] = Math.round(nodeHeight * 10000) / 10000;
+   EVENT.on('drw:addstroke', autoFlip)
+   EVENT.on('drw:remstroke', autoFlip)
+   function autoFlip() {
+      if (window.yuzutan.strokes.length == referenceKanji.length) {
+         setTimeout(() => {
+            flipToBack();
+         }, 500);
       }
    }
 
-   return heightmap;
-}
-
-
-function circleHell(context) {
-   const heightmap = calculateKanjiHeightmap(referenceKanji, structuralData)
-
-   // const thresholds = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19] 
-   const thresholds = [2]
-   const { ctx } = context;
-   
-   const gridRows = heightmap.length;
-   const gridCols = heightmap[0].length;
-   
-   // Hardcoded target size matching your KanjiVG canvas boundaries
-   const canvasScale = 109; 
-   const stepX = canvasScale / (gridCols - 1);
-   const stepY = canvasScale / (gridRows - 1);
-
-   // ctx.save();
-
-   // ctx.lineWidth = 1.2;
-   // ctx.strokeStyle = "rgba(142, 142, 147, 0.6)"; // Muted gray topographical ink
-
-   // // Helper function to linearly interpolate a coordinate between two grid nodes
-   // function interpolate(v1, v2, t) {
-   //    return v1 + t * (v2 - v1);
-   // }
-
-   // // 1. Loop through each elevation threshold layer (creates the concentric levels)
-   // thresholds.forEach((isoLevel) => {
-   //    ctx.beginPath();
-
-   //    // 2. Scan every individual grid cell in the matrix
-   //    for (let r = 0; r < gridRows - 1; r++) {
-   //       for (let c = 0; c < gridCols - 1; c++) {
-            
-   //          // Map the coordinates and scalar heights of the 4 corners of the current cell square
-   //          const x0 = c * stepX,     x1 = (c + 1) * stepX;
-   //          const y0 = r * stepY,     y1 = (r + 1) * stepY;
-
-   //          const hTL = heightmap[r][c];       // Top-Left
-   //          const hTR = heightmap[r][c + 1];   // Top-Right
-   //          const hBR = heightmap[r + 1][c + 1]; // Bottom-Right
-   //          const hBL = heightmap[r + 1][c];   // Bottom-Left
-
-   //          // 3. Check every edge of this square cell to see if the contour line passes through it
-   //          const points = [];
-
-   //          // Top Edge (TL -> TR)
-   //          if ((hTL >= isoLevel && hTR < isoLevel) || (hTL < isoLevel && hTR >= isoLevel)) {
-   //             let t = (isoLevel - hTL) / (hTR - hTL);
-   //             points.push({ x: interpolate(x0, x1, t), y: y0 });
-   //          }
-   //          // Right Edge (TR -> BR)
-   //          if ((hTR >= isoLevel && hBR < isoLevel) || (hTR < isoLevel && hBR >= isoLevel)) {
-   //             let t = (isoLevel - hTR) / (hBR - hTR);
-   //             points.push({ x: x1, y: interpolate(y0, y1, t) });
-   //          }
-   //          // Bottom Edge (BL -> BR)
-   //          if ((hBL >= isoLevel && hBR < isoLevel) || (hBL < isoLevel && hBR >= isoLevel)) {
-   //             let t = (isoLevel - hBL) / (hBR - hBL);
-   //             points.push({ x: interpolate(x0, x1, t), y: y1 });
-   //          }
-   //          // Left Edge (TL -> BL)
-   //          if ((hTL >= isoLevel && hBL < isoLevel) || (hTL < isoLevel && hBL >= isoLevel)) {
-   //             let t = (isoLevel - hTL) / (hBL - hTL);
-   //             points.push({ x: x0, y: interpolate(y0, y1, t) });
-   //          }
-
-   //          // 4. If the threshold crosses this cell, connect the interception points
-   //          if (points.length >= 2) {
-   //             // Apply your canvas UI scaling function if necessary
-   //             const pA = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[0]) : points[0];
-   //             const pB = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[1]) : points[1];
-               
-   //             ctx.moveTo(pA.x, pA.y);
-   //             ctx.lineTo(pB.x, pB.y);
-
-   //             // Handle rare ambiguous saddle cases (where 4 intersections occur in one cell)
-   //             if (points.length === 4) {
-   //                const pC = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[2]) : points[2];
-   //                const pD = typeof scaleReferencePoint === 'function' ? scaleReferencePoint(context, points[3]) : points[3];
-   //                ctx.moveTo(pC.x, pC.y);
-   //                ctx.lineTo(pD.x, pD.y);
-   //             }
-   //          }
-   //       }
-   //    }
-   //    ctx.stroke();
-   // });
-
-   // ctx.restore();
-
-   ctx.save();
-
-// --- Simplified Configuration Parameters ---
-const maxRadius = 6;                  // Single knob controlling grid spacing
-const gridSpacing = maxRadius * 2;    // Center-to-center distance (Diameter)
-const capRadius = gridSpacing * 0.42; // 90% of the maximum allowed radius (prevents touching)
-const minAllowedRadius = 2;         // Prevents rendering sub-pixel artifacts
-
-ctx.fillStyle = "#FFFFFF"; 
-ctx.strokeStyle = "rgba(142, 142, 147, 0.8)";
-ctx.lineWidth = 0.8;
-
-// Helper: Bilinear interpolation to sample height values
-function sampleHeightmap(x, y) {
-   const c = x / stepX;
-   const r = y / stepY;
-   
-   const c0 = Math.max(0, Math.min(gridCols - 2, Math.floor(c)));
-   const c1 = c0 + 1;
-   const r0 = Math.max(0, Math.min(gridRows - 2, Math.floor(r)));
-   const r1 = r0 + 1;
-   
-   const tx = c - c0;
-   const ty = r - r0;
-   
-   const h00 = heightmap[r0][c0];
-   const h10 = heightmap[r0][c1];
-   const h01 = heightmap[r1][c0];
-   const h11 = heightmap[r1][c1];
-   
-   const top = h00 + tx * (h10 - h00);
-   const bottom = h01 + tx * (h11 - h01);
-   return top + ty * (bottom - top);
-}
-
-// Helper: Find shortest distance from a point to a line segment
-function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
-   const dx = x2 - x1;
-   const dy = y2 - y1;
-   if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
-   
-   let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
-   t = Math.max(0, Math.min(1, t)); 
-   
-   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-}
-
-function interpolate(v1, v2, t) {
-   return v1 + t * (v2 - v1);
-}
-
-thresholds.forEach((isoLevel) => {
-   const segments = [];
-
-   // 1. Extract explicit line segments using Marching Squares (Stored in base unscaled space)
-   for (let r = 0; r < gridRows - 1; r++) {
-      for (let c = 0; c < gridCols - 1; c++) {
-         const x0 = c * stepX,     x1 = (c + 1) * stepX;
-         const y0 = r * stepY,     y1 = (r + 1) * stepY;
-
-         const hTL = heightmap[r][c];
-         const hTR = heightmap[r][c + 1];
-         const hBR = heightmap[r + 1][c + 1];
-         const hBL = heightmap[r + 1][c];
-
-         const points = [];
-
-         if ((hTL >= isoLevel && hTR < isoLevel) || (hTL < isoLevel && hTR >= isoLevel)) {
-            points.push({ x: interpolate(x0, x1, (isoLevel - hTL) / (hTR - hTL)), y: y0 });
-         }
-         if ((hTR >= isoLevel && hBR < isoLevel) || (hTR < isoLevel && hBR >= isoLevel)) {
-            points.push({ x: x1, y: interpolate(y0, y1, (isoLevel - hTR) / (hBR - hTR)) });
-         }
-         if ((hBL >= isoLevel && hBR < isoLevel) || (hBL < isoLevel && hBR >= isoLevel)) {
-            points.push({ x: interpolate(x0, x1, (isoLevel - hBL) / (hBR - hBL)), y: y1 });
-         }
-         if ((hTL >= isoLevel && hBL < isoLevel) || (hTL < isoLevel && hBL >= isoLevel)) {
-            points.push({ x: x0, y: interpolate(y0, y1, (isoLevel - hTL) / (hBL - hTL)) });
-         }
-
-         if (points.length >= 2) {
-            segments.push({ p1: points[0], p2: points[1] });
-            if (points.length === 4) {
-               segments.push({ p1: points[2], p2: points[3] });
-            }
-         }
+   EVENT.on('drw:addstroke', showComponent)
+   EVENT.on('drw:remstroke', showComponent)
+   function showComponent() {
+      let id = String(window.yuzutan.strokes.length);
+      
+      if (componentBreakdown[id]) {
+         const currentComponent = document.getElementById("currentComponent");
+         currentComponent.innerText = componentBreakdown[id];
+         currentComponent.classList.remove("flash-active");
+         currentComponent.offsetWidth;
+         currentComponent.classList.add("flash-active");
       }
    }
-
-   // 2. Generate triangular circle grid starting strictly at 0,0
-   const rowHeight = gridSpacing * Math.sqrt(3) / 2;
-   
-   for (let y = 0; y <= canvasScale; y += rowHeight) {
-      // Calculate row index to stagger every odd row
-      const rowIndex = Math.round(y / rowHeight);
-      const isOddRow = rowIndex % 2 !== 0;
-      
-      // Stagger odd rows by half the spacing, keeping row 0 starting exactly at x=0
-      const startX = isOddRow ? gridSpacing / 2 : 0;
-
-      for (let x = startX; x <= canvasScale; x += gridSpacing) {
-         
-         // Only draw inside the safe field bounding box boundaries
-         if (x < 0 || x > canvasScale || y < 0 || y > canvasScale) continue;
-
-         const localHeight = sampleHeightmap(x, y);
-         if (localHeight >= isoLevel) continue;
-
-         // 3. Proximity check done entirely in the SAME base map coordinate space
-         let minDistance = Infinity;
-         segments.forEach(seg => {
-            const dist = pointToSegmentDistance(x, y, seg.p1.x, seg.p1.y, seg.p2.x, seg.p2.y);
-            if (dist < minDistance) {
-               minDistance = dist;
-            }
-         });
-
-         // Max target size starts at our 90% cap limit
-         let targetRadius = capRadius;
-
-         // Shrink if it gets too close to the isoline boundary
-         const spacingBuffer = gridSpacing * 0.05; // 10% total padding (5% on each side of the gap)
-         if (minDistance < targetRadius + spacingBuffer) {
-            targetRadius = minDistance - spacingBuffer;
-         }
-
-         // 4. Transform positions and radii to UI canvas scale space at the exact moment of drawing
-         if (targetRadius >= minAllowedRadius) {
-            let renderPos = { x, y };
-            let edgePos = { x: x + targetRadius, y }; // Use a sample point to calculate scaled radius factor
-
-            renderPos = pointMath.scalePoint(renderPos);
-            edgePos = pointMath.scalePoint(edgePos);
-            
-            // Calculate the actual scaled radius dynamically based on the current context scale matrix
-            const scaledRadius = Math.abs(edgePos.x - renderPos.x);
-
-            ctx.beginPath();
-            ctx.arc(renderPos.x, renderPos.y, scaledRadius, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-         }
-      }
-   }
-});
-
-
-   ctx.restore();
-
-   const radius = 4;
-
-   // referenceKanji.forEach((stroke, idx) => {
-   //    const p0 = scaleReferencePoint(context, stroke[0]);
-   //    const p9 = scaleReferencePoint(context, stroke.at(-1));
-
-   //    ctx.save();
-      
-   //    ctx.beginPath();
-   //    ctx.fillStyle = '#8e8e93';
-   //    ctx.arc(p0.x, p0.y, radius, 0, 2 * Math.PI);
-   //    ctx.arc(p9.x, p9.y, radius, 0, 2 * Math.PI);
-   //    ctx.fill();
-
-   //    ctx.restore();
-   // });
-
-   structuralData.forEach((hint) => {
-      const { t, x, y } = hint;
-
-      // Handle coordinate space scaling transformation if present
-      const renderX = pointMath.scalePoint({ x, y }).x;
-      const renderY = pointMath.scalePoint({ x, y }).y;
-
-      ctx.save();
-      
-      if (t === 'joint') { // '#8e8e93'
-         ctx.fillStyle = '#007aff'; //'#ff3b30';
-      } else if (t === 'angle') {
-         ctx.fillStyle = '#007aff'; //'#007aff';
-      } else if (t === 'floater') {
-         ctx.fillStyle = 'transparent';
-      }
-
-      if (t != 'floater') {
-         ctx.beginPath();
-         ctx.arc(renderX, renderY, radius, 0, 2 * Math.PI);
-         ctx.fill();
-      }
-
-      ctx.restore();
-   });
 }
 
-
-
-// function parseComponentGridAreas(context, options = {}) {
-//    // const strokes = referenceKanji.map(stroke => 
-//    //    stroke.map(point => scaleReferencePoint(context, point))
-//    // )
-
-//    const strokes = referenceKanji;
-
-//    const gridRows = options.gridRows || 9;
-//    const gridCols = options.gridCols || 9;
-//    const connectionRadius = options.connectionRadius || 4.0;
-//    const canvasScale = options.canvasScale || 109.0; // Native KanjiVG resolution
-
-//    const totalStrokes = strokes.length;
-//    const dist = (p1, p2) => Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
-
-//    // --- STEP 1: Find interconnected pieces ---
-//    const adjacency = Array.from({ length: totalStrokes }, () => []);
-//    for (let i = 0; i < totalStrokes; i++) {
-//       for (let j = i + 1; j < totalStrokes; j++) {
-//          let connected = false;
-//          for (let p1 = 0; p1 < strokes[i].length; p1++) {
-//             if (connected) break;
-//             for (let p2 = 0; p2 < strokes[j].length; p2++) {
-//                if (dist(strokes[i][p1], strokes[j][p2]) <= connectionRadius) {
-//                   connected = true;
-//                   break;
-//                }
-//             }
-//          }
-//          if (connected) {
-//             adjacency[i].push(j);
-//             adjacency[j].push(i);
-//          }
-//       }
-//    }
-
-//    // BFS to isolate distinct connected components
-//    const visited = new Array(totalStrokes).fill(false);
-//    const components = [];
-//    for (let i = 0; i < totalStrokes; i++) {
-//       if (!visited[i]) {
-//          const group = [];
-//          const queue = [i];
-//          visited[i] = true;
-//          while (queue.length > 0) {
-//             const curr = queue.shift();
-//             group.push(curr);
-//             adjacency[curr].forEach((neighbor) => {
-//                if (!visited[neighbor]) {
-//                   visited[neighbor] = true;
-//                   queue.push(neighbor);
-//                }
-//             });
-//          }
-//          components.push(group);
-//       }
-//    }
-
-//    // --- STEP 2: Initialize the layout grid matrix ---
-//    const gridLayout = Array.from({ length: gridRows }, () => new Array(gridCols).fill('empty'));
-   
-//    const cellW = canvasScale / gridCols;
-//    const cellH = canvasScale / gridRows;
-
-//    // --- STEP 3: Map components to grid areas ---
-//    components.forEach((strokeIndices, compId) => {
-//       strokeIndices.forEach((sIdx) => {
-//          strokes[sIdx].forEach((pt) => {
-//             // Locate grid cell row/col based on the point coordinates
-//             const col = Math.min(Math.floor(pt.x / cellW), gridCols - 1);
-//             const row = Math.min(Math.floor(pt.y / cellH), gridRows - 1);
-            
-//             // Assign the unique component integer identifier to the active zone cell
-//             gridLayout[row][col] = compId;
-//          });
-//       });
-//    });
-
-//    return gridLayout;
-// }
-
-
-// function circleHell(context) {
-//    const { ctx, canvas } = context;
-//    const gridLayout = parseComponentGridAreas(context)
-
-//    const gridRows = gridLayout.length;
-//    const gridCols = gridLayout[0].length; // Safe columns check
-
-//    // Calculate dimensions based on the canvas size
-//    const cellWidth = canvas.width / gridCols;
-//    const cellHeight = canvas.height / gridRows;
-
-//    for (let r = 0; r < gridRows; r++) {
-//       for (let c = 0; c < gridCols; c++) {
-//          const currentCell = gridLayout[r][c];
-
-//          const x = c * cellWidth;
-//          const y = r * cellHeight;
-
-//          ctx.save();
-
-//          if (currentCell === 'empty') {
-//             // --- DRAW EMPTY AREAS ---
-//             // Fill unassigned space completely solid gray
-//             ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; 
-//             ctx.fillRect(x, y, cellWidth, cellHeight);
-            
-//          } else {
-//             // --- DRAW UNIFIED OCCUPIED AREAS ---
-//             // Leave interior transparent, but draw outer borders around the grouped area
-//             ctx.strokeStyle = '#48484a'; // Thick outline for the area
-//             ctx.lineWidth = 1;
-//             ctx.lineCap = 'round';
-
-//             // Check Top Edge: Draw line if at canvas top OR if neighbor above is different
-//             if (r === 0 || gridLayout[r - 1][c] !== currentCell) {
-//                ctx.beginPath();
-//                ctx.moveTo(x, y);
-//                ctx.lineTo(x + cellWidth, y);
-//                ctx.stroke();
-//             }
-
-//             // Check Bottom Edge: Draw line if at canvas bottom OR if neighbor below is different
-//             if (r === gridRows - 1 || gridLayout[r + 1][c] !== currentCell) {
-//                ctx.beginPath();
-//                ctx.moveTo(x, y + cellHeight);
-//                ctx.lineTo(x + cellWidth, y + cellHeight);
-//                ctx.stroke();
-//             }
-
-//             // Check Left Edge: Draw line if at canvas left OR if neighbor to the left is different
-//             if (c === 0 || gridLayout[r][c - 1] !== currentCell) {
-//                ctx.beginPath();
-//                ctx.moveTo(x, y);
-//                ctx.lineTo(x, y + cellHeight);
-//                ctx.stroke();
-//             }
-
-//             // Check Right Edge: Draw line if at canvas right OR if neighbor to the right is different
-//             if (c === gridCols - 1 || gridLayout[r][c + 1] !== currentCell) {
-//                ctx.beginPath();
-//                ctx.moveTo(x + cellWidth, y);
-//                ctx.lineTo(x + cellWidth, y + cellHeight);
-//                ctx.stroke();
-//             }
-//          }
-
-//          ctx.restore();
-//       }
-//    }
-// }
-
-// function sampleCircles(context) {
-//    const { canvas } = context;
-//    const strokes = referenceKanji;
-//    const gridSize = 9; 
-
-//    const now = new Date();
-//    const nextRandom = splitmix32(now.getHours() + now.getDate());
-
-//    // --- TUNABLE SCRAMBLING ---
-//    const scrambleRadius = 3; 
-
-//    // 1. Combine and scale both data sources
-//    let allPoints = [
-//       ...strokes.flat(),
-//       ...structuralData
-//    ].map(point => scaleReferencePoint(context, point));
-   
-//    // 2. Apply the tunable scrambling offset to each point
-//    if (scrambleRadius > 0) {
-//       allPoints = allPoints.map(point => {
-//          const angle = nextRandom() * Math.PI * 2;
-//          const distance = Math.sqrt(nextRandom()) * scrambleRadius; 
-         
-//          return {
-//             x: point.x + Math.cos(angle) * distance,
-//             y: point.y + Math.sin(angle) * distance
-//          };
-//       });
-//    }
-   
-//    const xSpacing = canvas.width / gridSize;
-//    const ySpacing = xSpacing * (Math.sqrt(3) / 2); 
-   
-//    const maxRadius = xSpacing / 2;
-//    const minRadius = 0; 
-//    const availableRadiusRange = maxRadius - minRadius;
-   
-//    const maxInfluenceDistance = xSpacing * 1; 
-//    // Pre-calculate squared distance to avoid expensive Math.sqrt calls inside the loop
-//    const maxInfluenceDistanceSq = maxInfluenceDistance * maxInfluenceDistance;
-   
-//    const circleData = [];
-//    const totalRows = Math.ceil(canvas.height / ySpacing);
-
-//    for (let r = 0; r <= totalRows; r++) {
-//       const y = r * r * 0 === 0 ? r * ySpacing : 0; 
-//       const xOffset = (r % 2 === 1) ? xSpacing / 2 : 0;
-      
-//       for (let c = 0; c <= gridSize; c++) {
-//          const x = c * xSpacing + xOffset;
-         
-//          // --- DENSITY COUNTING LOGIC ---
-//          let pointsInInfluence = 0;
-         
-//          for (let i = 0; i < allPoints.length; i++) {
-//             const px = allPoints[i].x - x;
-//             const py = allPoints[i].y - y;
-//             const distSq = px * px + py * py;
-            
-//             // Count how many points fall inside the influence radius
-//             if (distSq < maxInfluenceDistanceSq) {
-//                pointsInInfluence++;
-//             }
-//          }
-         
-//          // --- INVERTED RADIUS LOGIC BASED ON COUNT ---
-//          // Tune this number based on your dataset size. 
-//          // If a dense spot has 20 points, setting this to 20 means 20+ points will result in minRadius.
-//          const maxExpectedPoints = 15; 
-         
-//          // Normalize the density count between 0.0 and 1.0 (clamped at 1.0)
-//          const densityRatio = Math.min(pointsInInfluence / maxExpectedPoints, 1.0);
-         
-//          // Invert it: high density (ratio near 1) -> small radius. Low density (ratio 0) -> big radius.
-//          const radius = minRadius + (availableRadiusRange * (1 - densityRatio));
-         
-//          circleData.push({ x, y, radius });
-//       }
-//    }
-
-//    return circleData;
-// }
-
-
-
-// function circleHell(context) {
-//    const { ctx, canvas } = context;
-   
-//    const circleData = sampleCircles(context);
-//    ctx.save();
-
-//    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-//    ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
-   
-//    for (let i = 0; i < circleData.length; i++) {
-//       const circle = circleData[i];
-      
-//       ctx.beginPath();
-//       ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
-//       ctx.lineWidth = 1;
-//       ctx.fill();
-//       // ctx.stroke();
-//    }
-
-//    ctx.restore()
-// }
-
-
-
-// function computeQuadtreeNegative(context) {
-//    const { canvas } = context;
-//    const strokes = referenceKanji;
-
-//    // 1. Combine and scale data sources (identical to your original setup)
-//    const allPoints = [
-//       ...strokes.flat(),
-//       ...structuralData
-//    ].map(point => scaleReferencePoint(context, point));
-
-//    const leaves = [];
-   
-//    // Min size prevents infinite loops and controls the "resolution" of the negative silhouette
-//    // 4 to 8 pixels usually creates a beautifully sharp digital edge
-//    const minBlockSize = 32; 
-
-//    // Recursive helper function to check and split space
-//    function subdivide(x, y, size) {
-//       // Count how many points fall inside this specific bounding box
-//       let pointCount = 0;
-//       for (let i = 0; i < allPoints.length; i++) {
-//          const p = allPoints[i];
-//          if (p.x >= x && p.x < x + size && p.y >= y && p.y < y + size) {
-//             pointCount++;
-//          }
-//       }
-
-//       // If it contains points AND can still be split, subdivide it into 4 quadrants
-//       if (pointCount > 0 && size > minBlockSize) {
-//          const half = size / 2;
-//          subdivide(x, y, half);        // Top-Left
-//          subdivide(x + half, y, half);   // Top-Right
-//          subdivide(x, y + half, half);   // Bottom-Left
-//          subdivide(x + half, y + half, half); // Bottom-Right
-//       } else if (pointCount === 0) {
-//          // NEGATIVE SPACE CAPTURE: Only save blocks that contain absolutely NO points
-//          leaves.push({ x, y, size });
-//       }
-//    }
-
-//    // Start the recursion from a square matching the largest dimension of your canvas
-//    const baseSize = Math.max(canvas.width, canvas.height);
-//    subdivide(0, 0, baseSize);
-
-//    return leaves;
-// }
-
-// function circleHell(context) {
-//    const { ctx } = context;
-//    const quadtreeBlocks = computeQuadtreeNegative(context)
-
-
-//    // Draw each negative space block
-//    for (let i = 0; i < quadtreeBlocks.length; i++) {
-//       const block = quadtreeBlocks[i];
-
-//       // Subtle padding turns the blocks into an intricate grid matrix
-//       const padding = 1;
-//       const renderX = block.x + padding;
-//       const renderY = block.y + padding;
-//       const renderSize = block.size - (padding * 2);
-
-//       if (renderSize <= 0) continue;
-
-//       // // Style the blocks (e.g., glowing white/gray blocks against the dark background)
-//       ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
-//       ctx.fillRect(renderX, renderY, renderSize, renderSize);
-
-//       // Optional: Add a subtle border to make the structural fragmentation pop
-//       ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
-//       ctx.lineWidth = 1;
-//       ctx.strokeRect(renderX, renderY, renderSize, renderSize);
-//    }
-// }

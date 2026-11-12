@@ -2,7 +2,7 @@
 
 The core idea is to learn new vocab and how to write it at the same time, helping disambiguate things and improving recognition.
 
-- 📙 **takes your mining deck** <br>and looks for Expressions and Sentences
+- 📙 **filters your mining deck** <br>and looks for Expressions and Sentences
 
 - 📇 **generates fancy kanji cards** <br>for whatever it finds
 
@@ -14,7 +14,11 @@ The core idea is to learn new vocab and how to write it at the same time, helpin
 
 - 🎯 **tells you if you messed up** <br>by checking for wrong stroke count/order/direction
 
-At this stage, the addon is not stable. Things might be introduced, changed, or removed without warning.
+By default, the addon is *purist-friendly*. Draw a kanji from memory, flip, compare on the back.
+
+That said, there are weird fancy recognition-focused features, which try to speed up reviews, induce recall, and more.
+
+Note that at this stage, the addon is not stable. Things might be introduced, changed, or removed without warning.
 
 ## 🔧 extra setup required!
 
@@ -54,6 +58,21 @@ Here's a short guide:
 
 Credits for the converted [JmdictFurigana](https://github.com/Doublevil/JmdictFurigana) are in this [issue](https://github.com/yomidevs/yomitan/issues/2451).
 
+
+## 🎨 note interface
+
+All buttons can also be long-pressed for additional functionality:
+
+- 🧹・🧽 undo last stroke; clear canvas
+- 💡・🌧️ step through manual hint; toggle auto hint
+- 🧭・📌 show stroke diagram; pin stroke diagram
+
+On the back of the card, the buttons are replaced with score% and hint%, as well as icons for what was pressed on the front.
+
+The score% should only be used to gauge if anything went wrong (e.g missing a stroke results in 0 score).
+
+The hint% can be used to decide whether or not to fail the card if the kanji was completed correctly.
+
 ## ⚙️ config
 
 ## source_fields
@@ -90,6 +109,20 @@ The name of the deck where the kanji cards will be generated. If the deck doesn'
 ### hint_first_stroke_start
 
 Whether or not to show a dot where the first stroke starts on the front side of the card. `true` or `false`.
+
+### hint_noise_manual_step
+
+The hint button displays random scattered points (noise) of the kanji. The default value `0.2` adds 20% per press.
+
+### hint_noise_auto_grace_period
+
+How many seconds before autohint will show any noise and how long to wait before displaying additional noise after the pen is lifted.
+
+Autohint does not progress when the pen is down.
+
+### hint_noise_auto_timeframe
+
+How many seconds auto hint will take to display all of the noise (excluding the initial grace period).
 
 ### stroke_order_gradient
 
@@ -129,8 +162,8 @@ Useful when mapping a graphic tablet to a small portion of the screen (I have an
 
 <hr>
 
-## disclaimer
+## disclaimers
 
-This is an opinionated addon. I made it primarily *for myself*. As such, I cannot promise adding requested features. I do want you to have a good baseline experience though.
+This is an opinionated addon. I made it primarily *for myself*. As such, I cannot promise adding requested features. I do want you to have a good experience though.
 
-Also, I can do some light coding, but I'm not a developer. I did talk to a clanker to help me figure out how to implement some stuff.
+Also, I can do some light coding, but I'm not a developer. I did talk to a clanker to help me figure out how to implement some stuff. Most code is either generic or human written, for better or for worse.
