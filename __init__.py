@@ -300,6 +300,9 @@ def extract_and_create(col):
    yuzu_data = fetch_batch_kanji(list(new_kanji_data.keys()))
  
    for kanji, vocad_data in new_kanji_data.items():
+      if kanji not in yuzu_data:
+         continue
+      
       if kanji in existing_kanji_to_nid:
          nid = existing_kanji_to_nid[kanji]
          note = mw.col.get_note(nid)
