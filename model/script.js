@@ -1072,8 +1072,8 @@ function prepareAutoHintNoise() {
 function startAutoHint() {
    clearInterval(window._kanjiAutoHintTimer);
 
-   const gracePeriodMs = CONFIG.hint_noise_auto_grace_period; // Initial wait before any dots appear on card load
-   const strokePauseMs = CONFIG.hint_noise_auto_grace_period; // Wait time after lifting the pen before resuming dots
+   const gracePeriodMs = CONFIG.hint_noise_auto_grace_period * 1000; // Initial wait before any dots appear on card load
+   const strokePauseMs = CONFIG.hint_noise_auto_grace_period * 1000; // Wait time after lifting the pen before resuming dots
    const maxPercent = 1.0;    // Ceiling cap (stops early at 50%)
    const secondsToMax = CONFIG.hint_noise_auto_timeframe;    // Seconds it would take to reach 100% (1.0)
    const fps = 30;             // Updates per second
