@@ -32,6 +32,23 @@ Here's a short guide:
 
 3. Add the following **handlebar** into `Yomitan Settings` -> `Customize handlebars templates...`
    <details><summary>click me for handlebar code!</summary><pre><code>
+   {{#*inline "render-structured-content"}}
+      {{~#if (op "&&" (op "==" (typeof .) "object") (op ">=" length 1))~}}
+         {{~#each .~}}
+               {{~>render-structured-content .}}
+         {{~/each~}}
+      {{~else~}}
+         {{~#if tag~}}
+               <{{tag}}>{{>render-structured-content content~}}
+         {{~else~}}
+               {{.}}
+         {{~/if~}}
+         {{~#if tag~}}
+               </{{tag}}>
+         {{~/if~}}
+      {{~/if~}}
+   {{/inline}}
+   
    {{#*inline "jmdict-furigana-plain"}}
       {{~#regexReplace "&lt;ruby>(.+?)&lt;rt>(.+?)&lt;/rt>&lt;/ruby>" " $1[$2]" "g"~}}
          {{~set "foundJmdictFurigana" false ~}}
