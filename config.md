@@ -31,7 +31,9 @@ Here's a short guide:
 2. Download and import this [JmdictFurigana](https://gist.github.com/jpovixwm/46d52ad16ab16f3158dad245cf88d505/raw/01cc133d9b7b6ebcc08431f6d2d27f8c714401d2/jitendex-yomitan-20260709-JmdictFurigana.zip) into Yomitan, activate it.
 
 3. Add the following **handlebar** into `Yomitan Settings` -> `Customize handlebars templates...`
-   <details><summary>click me for handlebar code!</summary><pre><code>
+   <details><summary>click me for handlebar code!</summary>
+
+   ```
    {{#*inline "render-structured-content"}}
       {{~#if (op "&&" (op "==" (typeof .) "object") (op ">=" length 1))~}}
          {{~#each .~}}
@@ -50,7 +52,7 @@ Here's a short guide:
    {{/inline}}
    
    {{#*inline "jmdict-furigana-plain"}}
-      {{~#regexReplace "&lt;ruby>(.+?)&lt;rt>(.+?)&lt;/rt>&lt;/ruby>" " $1[$2]" "g"~}}
+      {{~#regexReplace "<ruby>(.+?)<rt>(.+?)</rt></ruby>" " $1[$2]" "g"~}}
          {{~set "foundJmdictFurigana" false ~}}
          {{~#each definition.definitions~}}
             {{~#unless (get "foundJmdictFurigana")~}}
@@ -65,6 +67,8 @@ Here's a short guide:
          {{~/if~}}
       {{~/regexReplace~}}
    {{/inline}}
+   ```
+
    </code></pre></details>
 
 4. in `Yomitan Settings` -> `Configure Anki flashcards...`, make sure the `ExpressionFurigana` field (or similar) is set to **{jmdict-furigana-plain}**
