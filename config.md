@@ -14,7 +14,7 @@ The core idea is to learn new vocab and how to write it at the same time, helpin
 
 - 🎯 **tells you if you messed up** <br>by checking for wrong stroke count/order/direction
 
-By default, the addon is *purist-friendly*. Draw a kanji from memory, flip, compare on the back.
+The addon supports around 4.3k most frequent kanji. By default, it is *purist-friendly*: draw a kanji from memory, flip, compare on the back.
 
 That said, there are weird fancy recognition-focused features, which try to speed up reviews, induce recall, and more.
 
@@ -33,7 +33,7 @@ Here's a short guide:
 3. Add the following **handlebar** into `Yomitan Settings` -> `Customize handlebars templates...`
    <details><summary>click me for handlebar code!</summary><pre><code>
    {{#*inline "jmdict-furigana-plain"}}
-      {{~#regexReplace "<ruby>(.+?)<rt>(.+?)</rt></ruby>" " $1[$2]" "g"~}}
+      {{~#regexReplace "&lt;ruby>(.+?)&lt;rt>(.+?)&lt;/rt>&lt;/ruby>" " $1[$2]" "g"~}}
          {{~set "foundJmdictFurigana" false ~}}
          {{~#each definition.definitions~}}
             {{~#unless (get "foundJmdictFurigana")~}}
@@ -61,7 +61,7 @@ Credits for the converted [JmdictFurigana](https://github.com/Doublevil/JmdictFu
 
 ## 🎨 interface
 
-Addon's menu is under **Tools** -> **Yuzutan** in the Anki menu bar. Adjust the config, generate the deck from there. 
+The addon's menu is under **Tools** -> **Yuzutan** in the Anki menu bar. Adjust the config, generate the deck from there. 
 
 During reviews, all buttons can also be long-pressed for additional functionality:
 
@@ -79,12 +79,14 @@ The hint% can be used to decide whether or not to fail the card if the kanji was
 
 ## source_fields
 
-Default values work for Lapis, Kiku, and other note types that use the same conventions. Note: the addon only supports working with one model!
+Default values work for Lapis, Kiku, and other note types that use the same conventions.
 
 - **expression** - word with **with furigana**
 - **sentence** - context sentence **with furigana**
 
 The **expression** field requires furigana to be split. Ideally, sentence furigana should be plain (brackets, no html tags).
+
+Note: the addon will always look for those fields in any of the decks specified in the queries.
 
 ## source_queries
 
