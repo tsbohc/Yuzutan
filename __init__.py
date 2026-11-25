@@ -16,7 +16,7 @@ def prep_model():
    def m(fname):
       return (ADDON_DIR / 'model' / fname).read_text(encoding="utf-8")
      
-   endsure_fields = ["Kanji", "Prompt", "Context", "Frequency", "Breakdown", "ReferenceData", "Keyword", "StructuralData"]
+   endsure_fields = ["Kanji", "Keyword", "Frequency", "Prompt", "Context", "keyboardStrokes", "ReferenceData", "componentBreakdown", "componentTree"]
    target_fields_set = set(endsure_fields)
    
    model = mw.col.models.by_name(TARGET_NOTE_TYPE)
@@ -44,15 +44,12 @@ CONFIG = {json.dumps(CONFIG['reviews'])}
 <script>
 (function () {{
 CONFIG = {json.dumps(CONFIG['reviews'])}
-{m('script.js')}}})();
+{m('script.js')}
+}})();
 </script>
 """
 
    MODEL_CSS = m('style.css')
-
-   for field in list(model["flds"]):
-      if field["name"] not in target_fields_set:
-         mw.col.models.remove_field(model, field)
 
    current_field_names = {f["name"] for f in model["flds"]}
    for field_name in endsure_fields:
@@ -64,6 +61,10 @@ CONFIG = {json.dumps(CONFIG['reviews'])}
    card_template = model["tmpls"][0]    
    card_template["qfmt"] = MODEL_QFMT
    card_template["afmt"] = MODEL_AFMT
+
+   for field in list(model["flds"]):
+      if field["name"] not in target_fields_set:
+         mw.col.models.remove_field(model, field)
 
    mw.col.models.update_dict(model)
 
@@ -274,8 +275,9 @@ def fill_note(note, vocad_data, yuzu_data, kanji):
    note['Context'] = json.dumps(vocad_data["SentenceFurigana"], ensure_ascii=False, separators=(',', ':'))
 
    note['Keyword'] = ', '.join(yuzu_data['meanings'])
-   note['Breakdown'] = json.dumps(yuzu_data['components'], ensure_ascii=False, separators=(',', ':'))
-   note['StructuralData'] = json.dumps(yuzu_data['structuralData'], ensure_ascii=False, separators=(',', ':'))
+   note['componentBreakdown'] = json.dumps(yuzu_data['componentBreakdown'], ensure_ascii=False, separators=(',', ':'))
+   note['componentTree'] = json.dumps(yuzu_data['componentTree'], ensure_ascii=False, separators=(',', ':'))
+   note['keyboardStrokes'] = json.dumps(yuzu_data['keyboardStrokes'], ensure_ascii=False, separators=(',', ':'))
 
    stroke_strings = []
    for stroke in yuzu_data['strokeData']:
@@ -399,11 +401,41 @@ setup_menu()
 
 
 
+# experimental stuff
 
+if CONFIG['reviews']['keyboard_mode']:
+   from aqt import mw, gui_hooks
+   from aqt.qt import QObject, QEvent, Qt
 
+   # Qt.Key codes matching your JS chord keys
+   BLOCKED_QT_KEYS = {
+      Qt.Key.Key_A, Qt.Key.Key_B, Qt.Key.Key_C, Qt.Key.Key_D, Qt.Key.Key_E,
+      Qt.Key.Key_F, Qt.Key.Key_G, Qt.Key.Key_H, Qt.Key.Key_I, Qt.Key.Key_J,
+      Qt.Key.Key_K, Qt.Key.Key_L, Qt.Key.Key_M, Qt.Key.Key_N, Qt.Key.Key_O,
+      Qt.Key.Key_P, Qt.Key.Key_Q, Qt.Key.Key_R, Qt.Key.Key_S, Qt.Key.Key_T,
+      Qt.Key.Key_U, Qt.Key.Key_V, Qt.Key.Key_W, Qt.Key.Key_X, Qt.Key.Key_Y,
+      Qt.Key.Key_Z,
+      Qt.Key.Key_Semicolon, Qt.Key.Key_Comma, Qt.Key.Key_Period, Qt.Key.Key_Slash,
+   }
 
+   class ChordShortcutBlocker(QObject):
+      def eventFilter(self, obj, event):
+         if (
+               event.type() == QEvent.Type.ShortcutOverride
+               and mw.state == "review"
+               and event.modifiers() == Qt.KeyboardModifier.NoModifier
+               and event.key() in BLOCKED_QT_KEYS
+         ):
+               event.accept()  # Cancels Qt QShortcut so the key reaches JS!
+               return True
+         return False
 
+   def setup_chord_blocker():
+      # Keep a reference on mw so Python's garbage collector doesn't destroy it
+      mw._chord_blocker = ChordShortcutBlocker(mw)
+      mw.app.installEventFilter(mw._chord_blocker)
 
+   gui_hooks.main_window_did_init.append(setup_chord_blocker)
 
 
 

@@ -12,7 +12,8 @@
       "hint_noise_manual_step": 0.2,
       "hint_noise_auto_timeframe": 15,
       "hint_noise_auto_grace_period": 2,
-      "_experimental": false
+      "_experimental": false,
+      "keyboard_mode": false
    },
    "source_fields": {
       "expression": "ExpressionFurigana",

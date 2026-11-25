@@ -230,6 +230,8 @@ const validationUtils = {
       const referenceStroke = referenceKanji[idx];
 
       const stroke = window.yuzutan.strokes[idx];
+      if (stroke.length == 0) return 100;
+
       const scaledStroke = pointMath.scaleStroke(stroke, 'input');
       const resampledStroke = validationUtils.resampleStroke(scaledStroke, referenceStroke.length);
 
@@ -241,35 +243,6 @@ const validationUtils = {
    }
 }
 
-
-const getRandomComponent = (() => {
-   // Fisher-Yates Shuffle, no repeats across resets
-
-   let availableKeys = [];
-   let lastPickedKey = null;
-
-   return function() {
-      if (availableKeys.length === 0) {
-         const allKeys = Object.keys(componentBreakdown);
-         
-         if (allKeys.length === 0) return null;
-
-         for (let i = allKeys.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [allKeys[i], allKeys[j]] = [allKeys[j], allKeys[i]];
-         }
-
-         if (allKeys.length > 1 && allKeys[allKeys.length - 1] === lastPickedKey) {
-            [allKeys[allKeys.length - 1], allKeys[0]] = [allKeys[0], allKeys[allKeys.length - 1]];
-         }
-
-         availableKeys = allKeys;
-      }
-
-      lastPickedKey = availableKeys.pop();
-      return componentBreakdown[lastPickedKey];
-   };
-})();
 
 
 const canvasUtils = {
@@ -318,16 +291,44 @@ const canvasUtils = {
       return `color-mix(in oklch, ${color}, ${badColour} ${reductionPercent}%)`;
    },
 
-   // renderStroke(ctx, stroke) {
-   //    if (stroke.length < 2) return;
+   renderSimpleStroke(ctx, stroke) {
+      if (stroke.length < 2) return;
 
-   //    ctx.beginPath();
-   //    ctx.moveTo(stroke[0].x, stroke[0].y);
-   //    for (let i = 1; i < stroke.length; i++) {
-   //       ctx.lineTo(stroke[i].x, stroke[i].y);
-   //    }
-   //    ctx.stroke(); 
-   // }
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x, stroke[0].y);
+      for (let i = 1; i < stroke.length; i++) {
+         ctx.lineTo(stroke[i].x, stroke[i].y);
+      }
+      ctx.stroke(); 
+   },
+
+   renderGridStroke(ctx, stroke, cellX, cellY, cellSize) {
+      if (stroke.length < 2) return;
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const pt of stroke) {
+         if (pt.x < minX) minX = pt.x;
+         if (pt.y < minY) minY = pt.y;
+         if (pt.x > maxX) maxX = pt.x;
+         if (pt.y > maxY) maxY = pt.y;
+      }
+
+      const w = maxX - minX || 1;
+      const h = maxY - minY || 1;
+      const tilePadding = cellSize * 0.3; // 25% inner padding on each side
+      const innerSize = cellSize - tilePadding * 2;
+      const scale = innerSize / Math.max(w, h);
+
+      const offsetX = cellX + (cellSize - w * scale) / 2 - minX * scale;
+      const offsetY = cellY + (cellSize - h * scale) / 2 - minY * scale;
+
+      ctx.beginPath();
+      ctx.moveTo(stroke[0].x * scale + offsetX, stroke[0].y * scale + offsetY);
+      for (let i = 1; i < stroke.length; i++) {
+         ctx.lineTo(stroke[i].x * scale + offsetX, stroke[i].y * scale + offsetY);
+      }
+      ctx.stroke();
+   },
 
    renderStroke(ctx, stroke) {
       const len = stroke.length;
@@ -467,6 +468,8 @@ const canvasUtils = {
    },
 
    renderStrokePoint(ctx, p0) {
+      if (!p0) return;
+
       const radius = CONFIG.stroke_line_width * 0.5;
       const coreColor = ctx.strokeStyle;
 
@@ -489,7 +492,6 @@ const canvasUtils = {
 }
 
 
-
 // canvases
 
 function initReferenceCanvas(id) {
@@ -509,6 +511,9 @@ function initReferenceCanvas(id) {
       if (canvasContainer) canvasContainer.style.backdropFilter = 'blur(0px)';
    }
 
+
+   // const randomhints = selectKanjiHintPoints();
+
    EVENT.on('ref:render', render);
    function render() {
       clear();
@@ -521,6 +526,7 @@ function initReferenceCanvas(id) {
             const firstStrokeStartPoint = pointMath.scalePoint(referenceKanji[0][0]);
             canvasUtils.renderStrokePoint(ctx, firstStrokeStartPoint);
          }
+
       }
       
       if (doShowDiagram || isSticky) {
@@ -577,6 +583,7 @@ function initDrawingCanvas(id) {
       return { x: e.clientX - rect.left, y: e.clientY - rect.top };
    }
 
+   EVENT.on('drw:render', render)
    function render() {
       ctx.clearRect(0, 0, rect.width, rect.height);
       ctx.strokeStyle = strokeColor;
@@ -584,7 +591,100 @@ function initDrawingCanvas(id) {
       
       window.yuzutan.strokes.forEach((stroke) => {
          canvasUtils.renderStroke(ctx, stroke)
-      });  
+      });
+
+      const smoothedStroke = pointMath.smoothStroke(currentStroke);
+      canvasUtils.renderStroke(ctx, smoothedStroke);
+
+
+      // typing stuff, to clean up later
+      if (!CONFIG.keyboard_mode) return;
+
+      const currentInputCount = window.yuzutan.strokes.length;
+      const strokesToDraw = referenceKanji.slice(0, currentInputCount);
+
+      const kanjiSize = 109; // adjust to match your coordinate space (e.g., 109 or 1)
+      const scale = rect.width / kanjiSize;
+      const r = Math.max(4, rect.width * 0.016);
+      const minDist = r * 2.4; // ensures dots + stroke outlines don't touch
+
+      const placedDots = [];
+
+      const isClear = (x, y) =>
+      placedDots.every((pt) => Math.hypot(pt.x - x, pt.y - y) >= minDist);
+
+      const drawDiamondOutline = (cx, cy, radius) => {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius);
+      ctx.lineTo(cx + radius, cy);
+      ctx.lineTo(cx, cy + radius);
+      ctx.lineTo(cx - radius, cy);
+      ctx.closePath();
+      ctx.stroke();
+      };
+
+      ctx.save();
+      ctx.lineWidth = 1.5;
+
+      strokesToDraw.forEach((stroke, idx) => {
+      if (!stroke.length) return;
+
+      const isLatest = idx === currentInputCount - 1;
+
+      // 1. Find first point along stroke (walking forward) that doesn't collide
+      let startIdx = 0;
+      while (
+         startIdx < stroke.length - 1 &&
+         !isClear(stroke[startIdx].x * scale, stroke[startIdx].y * scale)
+      ) {
+         startIdx++;
+      }
+      const sx = stroke[startIdx].x * scale;
+      const sy = stroke[startIdx].y * scale;
+      placedDots.push({ x: sx, y: sy });
+
+      // 2. Find first point along stroke (walking backward) that doesn't collide
+      let endIdx = stroke.length - 1;
+      while (
+         endIdx > startIdx &&
+         !isClear(stroke[endIdx].x * scale, stroke[endIdx].y * scale)
+      ) {
+         endIdx--;
+      }
+      const ex = stroke[endIdx].x * scale;
+      const ey = stroke[endIdx].y * scale;
+
+      ctx.globalAlpha = isLatest ? 1.0 : 0.55;
+      ctx.fillStyle = isLatest ? 'rgb(71, 99, 255)' : '#444444';
+      ctx.strokeStyle = isLatest ? 'rgb(71, 99, 255)' : '#444444';
+
+      // Start point: filled circle
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (isLatest && isClear(ex, ey)) {
+         ctx.save();
+         ctx.globalAlpha = 0.45;
+         ctx.lineWidth = 1.5;
+         ctx.setLineDash([4, 4]);
+         ctx.beginPath();
+         ctx.moveTo(sx, sy);
+         ctx.lineTo(ex, ey);
+         ctx.stroke();
+         ctx.restore();
+      }
+
+      // End point: hollow circle (only draw if it found a non-overlapping spot, or render bullseye on tiny dots)
+      if (isClear(ex, ey)) {
+         placedDots.push({ x: ex, y: ey });
+         drawDiamondOutline(ex, ey, r * 1);
+      } else {
+         drawDiamondOutline(sx, sy, r * 1);
+      }
+      });
+
+      ctx.restore();
    }
 
    render();
@@ -618,8 +718,6 @@ function initDrawingCanvas(id) {
       currentStroke.push(assisted_point);
       eraseNoiseNearPen(point);
       render();
-      const smoothedStroke = pointMath.smoothStroke(currentStroke);
-      canvasUtils.renderStroke(ctx, smoothedStroke);
    });
 
    window.addEventListener("pointerup", () => {
@@ -628,6 +726,7 @@ function initDrawingCanvas(id) {
       const smoothedStroke = pointMath.smoothStroke(currentStroke);
       if (smoothedStroke.length > 2) {
          window.yuzutan.strokes.push(smoothedStroke);
+         currentStroke = [];
          EVENT.emit('drw:addstroke');
       }
       render();
@@ -704,8 +803,9 @@ const EVENT = {
 
 
 const referenceKanji = (new Function(`return (${`{{ReferenceData}}`})`))();
-const structuralData = (new Function(`return (${`{{StructuralData}}`})`))();
-const componentBreakdown = (new Function(`return (${`{{Breakdown}}`})`))();
+const componentBreakdown = (new Function(`return (${`{{componentBreakdown}}`})`))();
+const componentTree = (new Function(`return (${`{{componentTree}}`})`))();
+const keyboardStrokes = (new Function(`return (${`{{keyboardStrokes}}`})`))();
 
 const _ref = canvasUtils.initCanvas('referenceCanvas');
 
@@ -860,7 +960,7 @@ function furiganify(text) {
 const context = (new Function(`return (${`{{Context}}`})`))();
 
 const context_container = document.getElementById("context-container");
-context_container.innerHTML = furiganify(marufy(getRandomSeededElement(context)));
+if (context_container) context_container.innerHTML = furiganify(marufy(getRandomSeededElement(context)));
 
 const promptWordContainer = document.getElementById("prompt-word");
 const promptRestContainer = document.getElementById("prompt-rest");
@@ -890,32 +990,64 @@ if (ENV.isFront) {
    promptRestContainer.innerHTML = restWords.map(word => `<div>${word}</div>`).join("");
 } else {
    let mainWord = furiganify(marufy(selectedValue));
-   promptWordContainer.innerHTML = furiganify(marufy(selectedValue));
-   // promptRestContainer.innerHTML = `<div>${mainWord}</div>` + restWords.map(word => `<div>${word}</div>`).join("");
+   // promptWordContainer.innerHTML = furiganify(marufy(selectedValue));
+   promptRestContainer.innerHTML = `<div>${mainWord}</div>` + restWords.map(word => `<div>${word}</div>`).join("");
 
-   for (const strokeidx in componentBreakdown) {
-      const component = componentBreakdown[strokeidx];
+   for (const component of componentBreakdown) {
 
-      const label = document.createElement('div');  
-      label.innerText = component[0];
-      label.style.opacity = 0.8;
+      const card = document.createElement('div');  
+      card.classList.add('component');
 
-      // if (previousStrokeidx) {
-      //    label.style.color = getColour(parseInt(previousStrokeidx));
-      // } else {
-      //    previousStrokeidx = strokeidx;
-      //    label.style.color = getColour(0);
-      // }
+      const kanji = document.createElement('div');
+      kanji.classList.add('kanji');
+      kanji.innerText = component['k'];
 
-      // promptWordContainer.appendChild(label);
-      promptRestContainer.appendChild(label);
+      if (component['semantic']) card.classList.add('semantic');
+      if (component['phonetic']) card.classList.add('phonetic');
+      
+      const label = document.createElement('div');
+      label.innerText = component['meaning'] || '?';
+      label.classList.add('label');
+
+      card.append(kanji, label)
+
+      promptWordContainer.appendChild(card);
    }
+
+   const componentTreeContainer = document.getElementById("component-tree");
+   componentTreeContainer.style.fontFamily = 'monospace';
+   componentTreeContainer.style.whiteSpace = 'pre-wrap';
+   componentTreeContainer.innerText = renderKanjiTree(componentTree);
 }
 
 
 
 
+function renderKanjiTree(node, prefix = '', isLast = true, isRoot = true) {
+  // Format the node's metadata
+  const details = [];
+  if (node.meaning) details.push(node.meaning);
+  if (node.semantic) details.push('semantic');
+  if (node.phonetic) details.push(`phonetic: ${node.phonetic}`);
+  if (node.radical) details.push('radical');
 
+  const label = details.length > 0 ? `${node.k} ${details.join(', ')}` : node.k;
+
+  // Determine the branch connector
+  const connector = isRoot ? '' : isLast ? '└── ' : '├── ';
+  let output = `${prefix}${connector}${label}\n`;
+
+  // Recurse through children
+  const children = node.d || [];
+  const childPrefix = isRoot ? '' : prefix + (isLast ? '    ' : '│   ');
+
+  children.forEach((child, index) => {
+    const childIsLast = index === children.length - 1;
+    output += renderKanjiTree(child, childPrefix, childIsLast, false);
+  });
+
+  return output;
+}
 
 
 
@@ -943,6 +1075,71 @@ if (ENV.isFront) {
 // =======================================================================
 
 
+if (CONFIG.keyboard_mode) {
+
+   function initKeyListener({ useCode = true, preventDefault = true } = {}) {
+      const onKeyDown = (e) => {
+         if (preventDefault) e.preventDefault();
+         if (e.repeat) return;
+
+         EVENT.emit('key', useCode ? e.code : e.key.toLowerCase());
+      };
+
+      window.addEventListener('keydown', onKeyDown, true);
+
+      return () => window.removeEventListener('keydown', onKeyDown, true);
+   }
+
+   window._cleanupKeys?.();
+   window._cleanupKeys = initKeyListener();
+
+   const strokeMap = {
+      KeyA: '㇒㇁㇓㇔6',               // ㇔ ambiguous
+      KeyS: '㇑㇔6㇚㇓㇁',             // ㇁・⻖bot, ㇚・水, ㇓・月, ㇔ ambiguous
+      KeyD: '㇀6',
+      KeyF: '㇐㇏㇂㇃㇔6㇀㇖㇟',       // ㇖・了, ㇟・必 ㇔ ambiguous
+
+      KeyJ: '㇜㇛6',
+      KeyK: '㇉㇚6㇁',                 // ㇁・狗・⻖bot
+      KeyL: '㇗㇄㇙㇟㇞6㇃㇂㇈㇛',       // ㇈・乙 (unsure), ㇛・毎, ㇃・心, ㇂・戈
+      Semicolon: '㇅㇈㇖㇕㇆㇇㇋㇡6'   // ㇇・⻖top
+   }
+
+   EVENT.on('key', processKey);
+   function processKey(k) {
+      const inputStrokes = strokeMap[k];
+      if (!inputStrokes) return;
+
+      const currentStrokeIdx = window.yuzutan.strokes.length;
+      const currentKeyStroke = keyboardStrokes[currentStrokeIdx];
+
+      if (!currentKeyStroke) return;
+
+      for (const strokeChar of currentKeyStroke) {
+         if (inputStrokes.includes(strokeChar)) {
+            console.log(k, strokeChar);
+            window.yuzutan.strokes.push([]);
+            EVENT.emit('drw:render');
+            EVENT.emit('drw:addstroke');
+            break;
+         }
+      }
+   }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // noise stuff is going core, most flexible and universal hint style so far
 
@@ -951,7 +1148,7 @@ function eraseNoiseNearPen(rawPenPos) {
    if (!points) return;
 
    const penPos = pointMath.scalePoint(rawPenPos, 'input');
-   const eraseRadiusSq = 6 * 6; // 9 units in 109x109 canvas space
+   const eraseRadiusSq = 7 * 7; // 9 units in 109x109 canvas space
    let changed = false;
 
    for (let i = 0; i < points.length; i++) {
@@ -1026,7 +1223,7 @@ function shuffleArray(arr) {
 
 
 function prepareAutoHintNoise() {
-   const offsetRadius = 2.5;
+   const offsetRadius = 3.0;
    const uniformity = 0.7;
    const perStrokeBuckets = [];
 
@@ -1133,8 +1330,51 @@ function startAutoHint() {
 // could experiment with offsetting the points if the stroke is too far away
 // that would provide real time feedback
 
-function applyAimAssist(rp) {
+// function applyAimAssist(rp) {
 
+//    if (!CONFIG._experimental) return rp;
+
+//    const strokeIndex = window.yuzutan.strokes.length;
+//    const targetStroke = referenceKanji[strokeIndex];
+
+//    if (!targetStroke) return rp;
+
+//    const minStrength = 0.0;
+//    const maxStrength = 0.8;
+//    const maxRadius = 109 * 0.25;
+
+//    let rawPoint = pointMath.scalePoint(rp, 'input')
+
+//    let closestPoint = targetStroke[0];
+//    let minDistanceSq = Infinity;
+
+//    // Directly find the closest sampled point
+//    for (let i = 0; i < targetStroke.length; i++) {
+//       const pt = targetStroke[i];
+//       const dx = rawPoint.x - pt.x;
+//       const dy = rawPoint.y - pt.y;
+//       const distSq = dx * dx + dy * dy;
+
+//       if (distSq < minDistanceSq) {
+//          minDistanceSq = distSq;
+//          closestPoint = pt;
+//       }
+//    }
+
+//    const dist = Math.sqrt(minDistanceSq)
+//    const t = Math.min(1, dist / maxRadius);
+//    const strength = maxStrength + (minStrength - maxStrength) * t;
+
+//    // Pull the pen halfway toward the closest reference point
+//    return pointMath.scalePoint({
+//       x: rawPoint.x + (closestPoint.x - rawPoint.x) * strength,
+//       y: rawPoint.y + (closestPoint.y - rawPoint.y) * strength
+//    });
+// }
+
+
+
+function applyAimAssist(rp) {
    if (!CONFIG._experimental) return rp;
 
    const strokeIndex = window.yuzutan.strokes.length;
@@ -1143,10 +1383,14 @@ function applyAimAssist(rp) {
    if (!targetStroke) return rp;
 
    const minStrength = 0.0;
-   const maxStrength = 0.1;
-   const maxRadius = 109 * 0.5;
+   const maxStrength = 0.2;
+   const maxRadius = 109 * 0.25;
 
-   let rawPoint = pointMath.scalePoint(rp, 'input')
+   // Jitter settings when NO close point is found
+   const safeZonePct = 0.75;   // Within 50% of maxRadius = smooth; outside = jitter
+   const maxJitterPx = 1;   // Max wobble in 109x109 reference space
+
+   let rawPoint = pointMath.scalePoint(rp, 'input');
 
    let closestPoint = targetStroke[0];
    let minDistanceSq = Infinity;
@@ -1164,16 +1408,33 @@ function applyAimAssist(rp) {
       }
    }
 
-   const dist = Math.sqrt(minDistanceSq)
+   const dist = Math.sqrt(minDistanceSq);
    const t = Math.min(1, dist / maxRadius);
    const strength = maxStrength + (minStrength - maxStrength) * t;
 
-   // Pull the pen halfway toward the closest reference point
+   let assistedX = rawPoint.x + (closestPoint.x - rawPoint.x) * strength;
+   let assistedY = rawPoint.y + (closestPoint.y - rawPoint.y) * strength;
+
+   // No close point found within safeZonePct -> apply jitter
+   const safeRadius = maxRadius * safeZonePct;
+   if (dist > safeRadius) {
+      // Ramp up jitter smoothly the further outside the safe zone you drift (caps at 1.0 at maxRadius)
+      const strayFactor = Math.min(1, (dist - safeRadius) / (maxRadius - safeRadius));
+      const jitterAmount = maxJitterPx * strayFactor;
+
+      assistedX += (Math.random() * 2 - 1) * jitterAmount;
+      assistedY += (Math.random() * 2 - 1) * jitterAmount;
+   }
+
    return pointMath.scalePoint({
-      x: rawPoint.x + (closestPoint.x - rawPoint.x) * strength,
-      y: rawPoint.y + (closestPoint.y - rawPoint.y) * strength
+      x: assistedX,
+      y: assistedY
    });
 }
+
+
+
+
 
 
 
@@ -1203,18 +1464,5 @@ if (CONFIG._experimental) {
       }
    }
 
-   EVENT.on('drw:addstroke', showComponent)
-   EVENT.on('drw:remstroke', showComponent)
-   function showComponent() {
-      let id = String(window.yuzutan.strokes.length);
-      
-      if (componentBreakdown[id]) {
-         const currentComponent = document.getElementById("currentComponent");
-         currentComponent.innerText = componentBreakdown[id];
-         currentComponent.classList.remove("flash-active");
-         currentComponent.offsetWidth;
-         currentComponent.classList.add("flash-active");
-      }
-   }
 }
 

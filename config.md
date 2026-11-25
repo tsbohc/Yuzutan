@@ -14,11 +14,15 @@ The core idea is to learn new vocab and how to write it at the same time, helpin
 
 - 🎯 **tells you if you messed up** <br>by checking for wrong stroke count/order/direction
 
-The addon supports around 4.3k most frequent kanji. By default, it is *purist-friendly*: draw a kanji from memory, flip, compare on the back.
+The addon supports around 4.8k kanji. By default, it is *purist-friendly*: draw a kanji from memory, flip, compare on the back.
 
 That said, there are weird fancy recognition-focused features, which try to speed up reviews, induce recall, and more.
 
 Note that at this stage, the addon is not stable. Things might be introduced, changed, or removed without warning.
+
+### todo
+
+font options, maybe more conveniently placed pass/fail buttons, stop autohint on undo
 
 ## 🔧 extra setup required!
 
