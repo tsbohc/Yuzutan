@@ -20,10 +20,6 @@ That said, there are weird fancy recognition-focused features, which try to spee
 
 Note that at this stage, the addon is not stable. Things might be introduced, changed, or removed without warning.
 
-### todo
-
-font options, maybe more conveniently placed pass/fail buttons, stop autohint on undo
-
 ## 🔧 extra setup required!
 
 The addon requires `ExpressionFurigana` or a similar field to have **split furigana**, such as `会[かい] 社[しゃ]`✔️. This won't work: `会社[かいしゃ]`❌.
